@@ -2,7 +2,7 @@
 
 Afinador cromático para el navegador, hecho en un solo archivo HTML sin dependencias. Escucha el micrófono, detecta la nota y muestra con una aguja cuántos cents te faltan para la cuerda.
 
-**Úsalo aquí:** https://soundfalya.github.io/afinador-utilitario/
+**Úsalo aquí:** https://soundfalya.github.io/Afinador-Utilitario/
 
 ## Instrumentos
 
