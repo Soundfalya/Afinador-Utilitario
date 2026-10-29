@@ -1,8 +1,18 @@
 # Afinador-5
 
-Afinador multinstrumento y metrónomo para el navegador, con la estética de un sintetizador analógico de los 70. Es un solo archivo HTML sin dependencias. Escucha el micrófono, detecta la nota y muestra en un display de 7 segmentos y una barra de LEDs cuántos cents te faltan para la cuerda. Se adapta a computador y celular.
+Afinador multinstrumento y metrónomo para el navegador, con la estética de un sintetizador analógico de los 70. Es una página HTML sin dependencias que se puede instalar como app y funciona sin internet. Escucha el micrófono, detecta la nota y muestra en un display de 7 segmentos y una barra de LEDs cuántos cents te faltan para la cuerda. Se adapta a computador y celular.
 
 **Úsalo aquí:** https://soundfalya.github.io/Afinador-Utilitario/
+
+## Instalar como app
+
+Ábrelo una vez con internet y queda guardado en el dispositivo. Desde ahí abre y afina sin conexión, con su propio ícono.
+
+- **Android (Chrome):** toca «Instalar» en el aviso de la página, o en el menú ⋮ elige «Instalar app».
+- **iPhone / iPad (Safari):** toca Compartir y luego «Agregar a inicio».
+- **Computador (Chrome o Edge):** usa el ícono de instalar en la barra de direcciones.
+
+Cuando se publica una versión nueva, la app muestra «Hay una versión nueva» la próxima vez que la abres con internet. Toca «Actualizar».
 
 ## Instrumentos
 
@@ -33,3 +43,20 @@ python3 -m http.server 8000
 ```
 
 Luego abre http://localhost:8000 y da permiso al micrófono.
+
+## Publicar cambios
+
+La app se guarda en el dispositivo mediante `sw.js`. **Cada vez que cambie `index.html`, `manifest.webmanifest`, `fonts/` o `icons/`, sube `VERSION` en `sw.js`** (`v1` → `v2`…). Si no se sube, quienes tienen la app instalada siguen usando la copia anterior sin conexión. Una revisión automática en cada PR falla si se olvida.
+
+Si alguna vez la parte sin conexión quedara rota, se puede reemplazar `sw.js` por este contenido, que borra la copia guardada en todos los dispositivos y deja la página funcionando directo desde internet:
+
+```js
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil((async () => {
+  for (const k of await caches.keys()) await caches.delete(k);
+  await self.registration.unregister();
+  for (const c of await self.clients.matchAll({ type:'window' })) c.navigate(c.url);
+})()));
+```
+
+Las fuentes Barlow y Barlow Condensed se incluyen en `fonts/` bajo la licencia SIL Open Font License (`fonts/OFL.txt`).

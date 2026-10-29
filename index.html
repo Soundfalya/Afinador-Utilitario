@@ -6,9 +6,21 @@
 <meta name="theme-color" content="#0a0807">
 <title>Afinador-5</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@500;600&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Afinador">
+<link rel="preload" href="fonts/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+  /* Fuentes locales (subconjunto latino de Google Fonts, licencia OFL) para que funcionen sin conexión */
+  @font-face{font-family:'Barlow'; font-weight:500; font-display:swap; src:url(fonts/barlow-500.woff2) format('woff2')}
+  @font-face{font-family:'Barlow'; font-weight:600; font-display:swap; src:url(fonts/barlow-600.woff2) format('woff2')}
+  @font-face{font-family:'Barlow Condensed'; font-weight:500; font-display:swap; src:url(fonts/barlow-condensed-500.woff2) format('woff2')}
+  @font-face{font-family:'Barlow Condensed'; font-weight:600; font-display:swap; src:url(fonts/barlow-condensed-600.woff2) format('woff2')}
+  @font-face{font-family:'Barlow Condensed'; font-weight:700; font-display:swap; src:url(fonts/barlow-condensed-700.woff2) format('woff2')}
   /* Panel de sintetizador analógico de fines de los 70: madera de nogal, panel negro serigrafiado en crema, LEDs rojos de 7 segmentos */
   :root{
     --walnut-1:#4a2a17; --walnut-2:#6b3d20; --walnut-3:#2f1a0e;
@@ -198,6 +210,18 @@
     .keyboard{height:92px}
     .kb-label{display:none}
   }
+  /* Aviso inferior de la app: versión nueva, instalar, ayuda en iPhone */
+  .appbar{
+    position:fixed; left:50%; bottom:max(16px, env(safe-area-inset-bottom, 0px)); translate:-50% 0; z-index:10;
+    width:min(560px, calc(100% - 32px)); display:flex; align-items:center; gap:12px; padding:10px 12px 10px 16px;
+    background:var(--panel-2); border:1.5px solid var(--silk); border-radius:4px; box-shadow:0 12px 30px rgba(0,0,0,.7);
+    font-family:var(--label); font-size:14px; letter-spacing:1.2px; color:var(--silk);
+  }
+  .appbar[hidden]{display:none}
+  .appbar .led{margin-right:2px}
+  .appbar-text{flex:1; min-width:0}
+  .appbar .key{width:auto; min-height:34px; padding:4px 14px; flex:none}
+  .appbar-close{background:none; border:none; cursor:pointer; color:var(--silk-dim); font-size:22px; line-height:1; padding:4px 6px; flex:none}
   @media (prefers-reduced-motion: reduce){ .key,.ladder i{transition:none} }
 </style>
 </head>
@@ -300,6 +324,13 @@
     <div class="keyboard" id="kb"></div>
   </div>
   <div class="cheek"></div>
+</div>
+
+<div class="appbar" id="appBar" role="status" hidden>
+  <span class="led on amber"></span>
+  <span class="appbar-text" id="appBarText"></span>
+  <button class="key" id="appBarAction" type="button" hidden></button>
+  <button class="appbar-close" id="appBarClose" type="button" aria-label="Cerrar">×</button>
 </div>
 
 <script>
@@ -647,6 +678,23 @@ function setMicUI(on, status, detail, isErr){
   el.micStatus.textContent = status;
   el.micLevel.textContent = detail;
   el.micLevel.className = 'lbl dim' + (isErr ? ' err' : '');
+  keepScreenOn(on);
+}
+// Mientras el micrófono está activo la pantalla no se apaga (donde el navegador lo permite)
+async function keepScreenOn(on){
+  if (!('wakeLock' in navigator)) return;
+  try {
+    if (on && !document.hidden && !state.wakeLock){
+      state.wakeLock = navigator.wakeLock.request('screen'); // se guarda la promesa para no pedirlo dos veces
+      const lock = await state.wakeLock;
+      state.wakeLock = lock;
+      lock.addEventListener('release', () => { if (state.wakeLock === lock) state.wakeLock = null; });
+    } else if (!on && state.wakeLock){
+      const lock = await state.wakeLock;
+      state.wakeLock = null;
+      await lock.release();
+    }
+  } catch(e){ state.wakeLock = null; }
 }
 // Un solo AudioContext para micrófono, tonos y metrónomo. En iOS dos contextos
 // (o uno creado antes de abrir el micrófono) quedan interrumpidos o en silencio.
@@ -861,6 +909,67 @@ const tempoKnob = makeKnob('kTempo', { min:40, max:240, value:state.bpm, pxPerSt
   onChange:v => { state.bpm = v; renderBpm(); savePrefs(); } });
 renderInstruments(); renderCalib(); renderStrings(); renderSig(); renderBeats(); renderBpm(); clearReading();
 fitToWindow();
+
+// ====== App instalable y sin conexión (PWA) ======
+const appBar = { box:document.getElementById('appBar'), text:document.getElementById('appBarText'),
+  action:document.getElementById('appBarAction'), close:document.getElementById('appBarClose'), kind:null };
+function showAppBar(kind, text, actionLabel, onAction){
+  if (appBar.kind === 'update' && kind !== 'update') return; // el aviso de versión nueva tiene prioridad
+  appBar.kind = kind;
+  appBar.text.textContent = text;
+  appBar.action.hidden = !actionLabel;
+  appBar.action.textContent = actionLabel || '';
+  appBar.action.onclick = onAction || null;
+  appBar.box.hidden = false;
+}
+function hideAppBar(){ appBar.box.hidden = true; appBar.kind = null; }
+appBar.close.addEventListener('click', () => {
+  if (appBar.kind === 'install' || appBar.kind === 'ios'){ try { localStorage.setItem('afinador5-install-closed', '1'); } catch(e){} }
+  hideAppBar();
+});
+function installClosed(){ try { return localStorage.getItem('afinador5-install-closed') === '1'; } catch(e){ return false; } }
+const isInstalled = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  // Cuando la versión nueva toma el control se recarga una vez (no en la primera instalación)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true; location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const offer = worker => showAppBar('update', 'Hay una versión nueva del afinador', 'Actualizar', () => {
+      appBar.action.disabled = true; worker.postMessage('SKIP_WAITING');
+    });
+    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) offer(worker);
+      });
+    });
+    // Una app instalada puede quedar abierta días: busca versión nueva al volver a ella
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(err => console.warn('Service worker no registrado', err));
+}
+
+// Android y escritorio (Chrome, Edge): botón propio para instalar
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  if (installClosed()) return;
+  showAppBar('install', 'Instala el afinador y úsalo sin internet', 'Instalar', async () => {
+    hideAppBar();
+    e.prompt();
+    try { await e.userChoice; } catch(err){}
+  });
+});
+window.addEventListener('appinstalled', () => { if (appBar.kind === 'install') hideAppBar(); });
+
+// iPhone y iPad no tienen aviso de instalación: se explica cómo agregarlo al inicio
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (isIOS && !isInstalled && !installClosed())
+  showAppBar('ios', 'Para instalarlo: toca Compartir y luego «Agregar a inicio»');
 </script>
 </body>
 </html>
