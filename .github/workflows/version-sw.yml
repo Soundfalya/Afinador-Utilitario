@@ -1,0 +1,32 @@
+# Si un PR cambia archivos que la app guarda para usar sin conexión, también debe subir
+# VERSION en sw.js. Si no, los celulares con la app instalada se quedan con la versión anterior.
+name: Versión del service worker
+
+on:
+  pull_request:
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Revisar que VERSION cambió
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE"...HEAD)
+          echo "$changed"
+          if ! echo "$changed" | grep -qE '^(index\.html|manifest\.webmanifest|sw\.js|fonts/|icons/)'; then
+            echo "No cambian archivos de la app."; exit 0
+          fi
+          if git show "$BASE:sw.js" >/dev/null 2>&1; then
+            old=$(git show "$BASE:sw.js" | grep -oE "^const VERSION = '[^']+'")
+            new=$(grep -oE "^const VERSION = '[^']+'" sw.js)
+            if [ "$old" = "$new" ]; then
+              echo "::error file=sw.js::Cambiaron archivos de la app pero VERSION sigue igual ($new). Súbela, por ejemplo a la siguiente vN."
+              exit 1
+            fi
+          fi
+          echo "VERSION actualizada."
