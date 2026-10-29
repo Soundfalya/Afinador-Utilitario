@@ -31,6 +31,9 @@
   button{font:inherit; color:inherit}
   button:focus-visible,.knob-dial:focus-visible{outline:2px solid var(--amber); outline-offset:3px}
 
+  /* En escritorio el panel se escala entero para llenar la ventana (ver fitToWindow) */
+  body.fit{display:flex; align-items:center; justify-content:center; min-height:100vh; min-height:100dvh; padding:16px}
+  body.fit .synth{width:1400px; max-width:none; margin:0; flex:none}
   .synth{display:flex; max-width:1400px; margin:0 auto; border-radius:6px; overflow:hidden; box-shadow:0 30px 60px rgba(0,0,0,.6), 0 0 0 1px #000}
   .cheek{
     width:44px; flex:none;
@@ -799,7 +802,7 @@ function tap(){
 el.instBtns.addEventListener('click', e => {
   const b = e.target.closest('[data-inst]'); if (!b) return;
   state.instrument = b.dataset.inst; state.lockedIdx = null;
-  renderInstruments(); renderStrings(); clearReading(); savePrefs();
+  renderInstruments(); renderStrings(); clearReading(); savePrefs(); fitToWindow();
 });
 el.strings.addEventListener('click', e => {
   const b = e.target.closest('[data-idx]'); if (!b) return;
@@ -827,6 +830,27 @@ el.tapBtn.addEventListener('click', tap);
 document.addEventListener('pointerdown', () => { if (state.outCtx && state.outCtx.state !== 'running' && state.outCtx.state !== 'closed') state.outCtx.resume(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && state.running) stopMic(); });
 
+// ====== Ajuste a la ventana (escritorio) ======
+const FIT_W = 1400, FIT_MIN_VW = 1181;
+function fitToWindow(){
+  const synth = document.querySelector('.synth');
+  synth.style.zoom = ''; el.kb.style.height = '';
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (vw < FIT_MIN_VW){ document.body.classList.remove('fit'); return; }
+  document.body.classList.add('fit');
+  const availW = vw - 32, availH = vh - 34, h = synth.offsetHeight;
+  const z = Math.min(availW / FIT_W, availH / h);
+  // Si sobra alto, el teclado crece para que el panel llene la ventana sin márgenes negros
+  const extra = availH / z - h;
+  if (extra > 0){
+    const kbH = el.kb.offsetHeight;
+    el.kb.style.height = Math.min(kbH + extra, kbH * 2.5) + 'px';
+  }
+  synth.style.zoom = z;
+}
+window.addEventListener('resize', fitToWindow);
+if (document.fonts) document.fonts.ready.then(fitToWindow);
+
 // ====== Init ======
 loadPrefs();
 const a4Knob = makeKnob('kA4', { min:415, max:466, value:state.a4, pxPerStep:4, ticks:11, reset:440, labels:[['415',-135],['466',135]],
@@ -836,6 +860,7 @@ const trKnob = makeKnob('kTr', { min:-6, max:6, value:state.transpose, pxPerStep
 const tempoKnob = makeKnob('kTempo', { min:40, max:240, value:state.bpm, pxPerStep:2, ticks:11, reset:120, labels:[['40',-135],['240',135]],
   onChange:v => { state.bpm = v; renderBpm(); savePrefs(); } });
 renderInstruments(); renderCalib(); renderStrings(); renderSig(); renderBeats(); renderBpm(); clearReading();
+fitToWindow();
 </script>
 </body>
 </html>
