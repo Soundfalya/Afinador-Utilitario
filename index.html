@@ -620,7 +620,7 @@ function updatePitchDisplay(freq){
 function processAudio(now){
   if (!state.running) return;
   state.raf = requestAnimationFrame(processAudio);
-  if (now - state.lastAnalysis < ANALYSIS_INTERVAL_MS) return;
+  if (now - state.lastAnalysis < ANALYSIS_INTERVAL_MS || state.audioCtx.state !== 'running') return;
   state.lastAnalysis = now;
   state.analyser.getFloatTimeDomainData(state.buffer);
   const range = pitchRange();
@@ -660,7 +660,7 @@ function sharedCtx(){
 function onCtxState(){
   if (!state.running) return;
   if (state.outCtx.state === 'running') setMicUI(true, 'Escuchando', 'Señal —');
-  else setMicUI(true, 'En pausa', 'Toca la pantalla para reanudar');
+  else setMicUI(true, 'En espera', 'Toca la pantalla para iniciar');
 }
 function setAudioSession(type){
   // iOS 16.4+: fija el modo antes de abrir el micrófono para que el cambio no interrumpa el audio
@@ -682,8 +682,9 @@ async function startMic(){
       echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1,
       googEchoCancellation:false, googNoiseSuppression:false, googAutoGainControl:false, googHighpassFilter:false,
     } });
-    await resumed;
-    if (ctx.state !== 'running') await ctx.resume();
+    // Sin un toque (inicio automático) resume() puede quedar pendiente: no esperarlo para siempre.
+    // Si el contexto sigue detenido, la pantalla pide un toque (ver onCtxState).
+    await Promise.race([resumed, new Promise(r => setTimeout(r, 300))]);
     state.audioCtx = ctx;
     state.source = ctx.createMediaStreamSource(state.stream);
     state.analyser = ctx.createAnalyser();
@@ -699,6 +700,16 @@ async function startMic(){
     console.error(err); releaseMic();
     setMicUI(false, 'Apagado', micErrorMessage(err), true);
   } finally { state.starting = false; el.micBtn.disabled = false; }
+}
+// Pide el micrófono al abrir la página, salvo que el permiso ya esté denegado
+async function autoStartMic(){
+  try {
+    if (navigator.permissions){
+      const p = await navigator.permissions.query({ name:'microphone' });
+      if (p.state === 'denied') return;
+    }
+  } catch(e){}
+  startMic();
 }
 function releaseMic(){
   if (state.raf) cancelAnimationFrame(state.raf);
@@ -818,7 +829,11 @@ el.kb.addEventListener('pointerdown', e => {
   playTone(midiToFreq(Number(k.dataset.midi)));
   k.classList.add('lit'); setTimeout(() => { if (k !== litKey) k.classList.remove('lit'); }, 250);
 });
-el.micBtn.addEventListener('click', () => state.running ? stopMic() : startMic());
+el.micBtn.addEventListener('click', () => {
+  // Si está esperando el toque para iniciar, el toque en MIC solo reanuda el audio
+  if (state.running && state.outCtx.state !== 'running') return;
+  state.running ? stopMic() : startMic();
+});
 el.sigBtns.addEventListener('click', e => {
   const b = e.target.closest('[data-sig]'); if (!b) return;
   state.sig = b.dataset.sig; state.metro.beat = 0;
@@ -828,7 +843,11 @@ el.playBtn.addEventListener('click', () => state.metro.running ? stopMetro() : s
 el.tapBtn.addEventListener('click', tap);
 // iOS suspende o "interrumpe" el contexto (llamadas, notificaciones): se reanuda al siguiente toque
 document.addEventListener('pointerdown', () => { if (state.outCtx && state.outCtx.state !== 'running' && state.outCtx.state !== 'closed') state.outCtx.resume(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && state.running) stopMic(); });
+// Al cambiar de pestaña se apaga el micrófono y al volver se enciende de nuevo
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden){ if (state.running){ state.resumeOnShow = true; stopMic(); } }
+  else if (state.resumeOnShow){ state.resumeOnShow = false; startMic(); }
+});
 
 // ====== Ajuste a la ventana (escritorio) ======
 const FIT_W = 1400, FIT_MIN_VW = 1181;
@@ -861,6 +880,7 @@ const tempoKnob = makeKnob('kTempo', { min:40, max:240, value:state.bpm, pxPerSt
   onChange:v => { state.bpm = v; renderBpm(); savePrefs(); } });
 renderInstruments(); renderCalib(); renderStrings(); renderSig(); renderBeats(); renderBpm(); clearReading();
 fitToWindow();
+autoStartMic();
 </script>
 </body>
 </html>
