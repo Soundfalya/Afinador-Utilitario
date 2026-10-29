@@ -316,7 +316,7 @@ const ANALYSIS_INTERVAL_MS = 40, HOLD_MS = 700;
 
 const state = {
   instrument:'guitar', transpose:0, a4:440, lockedIdx:null, tone:true,
-  running:false, starting:false, audioCtx:null, analyser:null, source:null, stream:null, buffer:null, yin:null, raf:null,
+  running:false, starting:false, audioCtx:null, analyser:null, source:null, sink:null, stream:null, buffer:null, yin:null, raf:null,
   lastAnalysis:0, lastSignal:0, freqHistory:[], smoothCents:null,
   outCtx:null,
   bpm:120, sig:'4/4', metro:{ running:false, beat:0, nextTime:0, timer:null, queue:[], raf:null, taps:[] },
@@ -645,22 +645,52 @@ function setMicUI(on, status, detail, isErr){
   el.micLevel.textContent = detail;
   el.micLevel.className = 'lbl dim' + (isErr ? ' err' : '');
 }
+// Un solo AudioContext para micrófono, tonos y metrónomo. En iOS dos contextos
+// (o uno creado antes de abrir el micrófono) quedan interrumpidos o en silencio.
+function sharedCtx(){
+  if (!state.outCtx){
+    state.outCtx = new (window.AudioContext || window.webkitAudioContext)();
+    state.outCtx.addEventListener('statechange', onCtxState);
+  }
+  return state.outCtx;
+}
+function onCtxState(){
+  if (!state.running) return;
+  if (state.outCtx.state === 'running') setMicUI(true, 'Escuchando', 'Señal —');
+  else setMicUI(true, 'En pausa', 'Toca la pantalla para reanudar');
+}
+function setAudioSession(type){
+  // iOS 16.4+: fija el modo antes de abrir el micrófono para que el cambio no interrumpa el audio
+  try { if (navigator.audioSession) navigator.audioSession.type = type; } catch(e){}
+}
 async function startMic(){
   if (state.starting || state.running) return;
   state.starting = true; el.micBtn.disabled = true;
   setMicUI(false, 'Pidiendo permiso…', '');
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('unsupported');
-    state.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
-    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
-    state.source = state.audioCtx.createMediaStreamSource(state.stream);
-    state.analyser = state.audioCtx.createAnalyser();
+    setAudioSession('play-and-record');
+    // Crear y reanudar el contexto dentro del toque: después del await el navegador
+    // ya no lo considera un gesto del usuario y el contexto queda suspendido (sin señal).
+    const ctx = sharedCtx();
+    const resumed = ctx.resume().catch(() => {});
+    // Sin procesamiento de voz: con él el celular entra en modo llamada y filtra las notas.
+    state.stream = await navigator.mediaDevices.getUserMedia({ audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1,
+      googEchoCancellation:false, googNoiseSuppression:false, googAutoGainControl:false, googHighpassFilter:false,
+    } });
+    await resumed;
+    if (ctx.state !== 'running') await ctx.resume();
+    state.audioCtx = ctx;
+    state.source = ctx.createMediaStreamSource(state.stream);
+    state.analyser = ctx.createAnalyser();
     state.analyser.fftSize = 4096; state.analyser.smoothingTimeConstant = 0;
-    state.source.connect(state.analyser);
+    // Salida muda hacia destination: Safari no procesa nodos que no llegan a la salida
+    state.sink = ctx.createGain(); state.sink.gain.value = 0;
+    state.source.connect(state.analyser); state.analyser.connect(state.sink); state.sink.connect(ctx.destination);
     state.buffer = new Float32Array(state.analyser.fftSize);
     state.running = true; state.lastAnalysis = 0;
-    setMicUI(true, 'Escuchando', 'Señal —');
+    onCtxState();
     state.raf = requestAnimationFrame(processAudio);
   } catch(err){
     console.error(err); releaseMic();
@@ -670,8 +700,9 @@ async function startMic(){
 function releaseMic(){
   if (state.raf) cancelAnimationFrame(state.raf);
   if (state.stream) state.stream.getTracks().forEach(t => t.stop());
-  if (state.audioCtx && state.audioCtx.state !== 'closed') state.audioCtx.close();
-  state.raf = state.stream = state.audioCtx = state.analyser = state.source = null;
+  [state.source, state.analyser, state.sink].forEach(n => { if (n) n.disconnect(); });
+  state.raf = state.stream = state.audioCtx = state.analyser = state.source = state.sink = null;
+  setAudioSession('auto');
 }
 function stopMic(){
   state.running = false; releaseMic();
@@ -681,9 +712,9 @@ function stopMic(){
 
 // ====== Salida de audio (tonos y metrónomo) ======
 function outCtx(){
-  if (!state.outCtx) state.outCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (state.outCtx.state === 'suspended') state.outCtx.resume();
-  return state.outCtx;
+  const ctx = sharedCtx();
+  if (ctx.state !== 'running') ctx.resume();
+  return ctx;
 }
 function playTone(freq){
   if (!state.tone) return;
@@ -792,6 +823,8 @@ el.sigBtns.addEventListener('click', e => {
 });
 el.playBtn.addEventListener('click', () => state.metro.running ? stopMetro() : startMetro());
 el.tapBtn.addEventListener('click', tap);
+// iOS suspende o "interrumpe" el contexto (llamadas, notificaciones): se reanuda al siguiente toque
+document.addEventListener('pointerdown', () => { if (state.outCtx && state.outCtx.state !== 'running' && state.outCtx.state !== 'closed') state.outCtx.resume(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && state.running) stopMic(); });
 
 // ====== Init ======
