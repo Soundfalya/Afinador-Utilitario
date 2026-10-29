@@ -1,6 +1,6 @@
-# Afinador Multinstrumento
+# Afinador-5
 
-Afinador cromático para el navegador, hecho en un solo archivo HTML sin dependencias. Escucha el micrófono, detecta la nota y muestra con una aguja cuántos cents te faltan para la cuerda.
+Afinador multinstrumento y metrónomo para el navegador, con la estética de un sintetizador analógico de los 70. Es un solo archivo HTML sin dependencias. Escucha el micrófono, detecta la nota y muestra en un display de 7 segmentos y una barra de LEDs cuántos cents te faltan para la cuerda. Se adapta a computador y celular.
 
 **Úsalo aquí:** https://soundfalya.github.io/Afinador-Utilitario/
 
@@ -17,10 +17,11 @@ Afinador cromático para el navegador, hecho en un solo archivo HTML sin depende
 ## Funciones
 
 - Detección de tono con el algoritmo YIN, limitada al rango del instrumento elegido.
-- Aguja y cents medidos respecto a la cuerda objetivo, con indicación de subir o bajar.
+- Barra de LEDs y cents medidos respecto a la cuerda objetivo, con indicación de apretar o aflojar.
 - Toca una cuerda en pantalla para oír su tono de referencia y fijarla como objetivo.
-- Transposición de −6 a +6 semitonos.
-- Calibración de A4 entre 415 y 466 Hz.
+- Transposición de −6 a +6 semitonos y calibración de A4 entre 415 y 466 Hz con perillas (arrastra arriba/abajo, rueda del mouse o flechas; doble clic para reiniciar).
+- Metrónomo de 40 a 240 BPM con compases 2/4, 3/4, 4/4 y 6/8, acento en el primer tiempo y TAP tempo.
+- Teclado de 2 octavas que toca tonos de referencia y marca la nota detectada.
 - Recuerda el instrumento, la transposición y la calibración.
 
 ## Uso local

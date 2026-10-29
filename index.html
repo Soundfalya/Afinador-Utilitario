@@ -3,611 +3,806 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Afinador Multinstrumento</title>
+<meta name="theme-color" content="#0a0807">
+<title>Afinador-5</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@500;600&display=swap" rel="stylesheet">
 <style>
+  /* Panel de sintetizador analógico de fines de los 70: madera de nogal, panel negro serigrafiado en crema, LEDs rojos de 7 segmentos */
   :root{
-    --bg:#0f1115; --bg2:#1a2030; --panel:#171a21; --panel2:#1f2430; --line:#2a3040; --hover:#2a3344;
-    --txt:#e8eaf0; --muted:#8b93a7;
-    --ok:#28d17c; --warn:#f5b301; --bad:#ff4d5e; --accent:#4ea1ff; --active-bg:#20304a;
+    --walnut-1:#4a2a17; --walnut-2:#6b3d20; --walnut-3:#2f1a0e;
+    --room:#0a0807; --panel:#131313; --panel-2:#1b1b1b; --silk:#e9e1cc; --silk-dim:#9c9584;
+    --led:#ff2a1a; --led-off:#3a0d09; --seg-off:#2a0906; --amber:#ffb020; --amber-off:#3a2806; --green:#43e06a; --green-off:#0d2a14;
+    --cap:#d9d4c7; --cap-dark:#a9a397; --cap-ink:#1a1a1a;
+    --label:'Barlow Condensed','Arial Narrow','Liberation Sans Narrow',sans-serif;
+    --body:'Barlow','Liberation Sans',Arial,sans-serif;
     color-scheme:dark;
   }
   *{box-sizing:border-box}
+  html,body{background:var(--room)}
   body{
-    margin:0; font-family:'Segoe UI',system-ui,sans-serif;
-    background:radial-gradient(circle at 50% 0%,var(--bg2),var(--bg) 70%) var(--bg);
-    color:var(--txt); min-height:100vh;
-    display:flex; flex-direction:column; align-items:center;
-    padding-block:20px;
+    margin:0; font-family:var(--body); color:var(--silk);
+    padding-block:24px;
     padding-left:max(16px, env(safe-area-inset-left, 0px));
     padding-right:max(16px, env(safe-area-inset-right, 0px));
-    gap:18px;
+    -webkit-tap-highlight-color:transparent;
   }
-  h1{font-size:1.4rem; margin:0; font-weight:600; letter-spacing:.5px; text-align:center}
-  .sub{color:var(--muted); font-size:.85rem; margin-top:-10px; text-align:center}
+  button{font:inherit; color:inherit}
+  button:focus-visible,.knob-dial:focus-visible{outline:2px solid var(--amber); outline-offset:3px}
 
-  .card{
-    background:var(--panel); border:1px solid var(--line); border-radius:16px;
-    padding:18px; width:100%; max-width:520px;
-    box-shadow:0 8px 30px rgba(0,0,0,.35);
+  .synth{display:flex; max-width:1400px; margin:0 auto; border-radius:6px; overflow:hidden; box-shadow:0 30px 60px rgba(0,0,0,.6), 0 0 0 1px #000}
+  .cheek{
+    width:44px; flex:none;
+    background:
+      repeating-linear-gradient(178deg, rgba(0,0,0,.18) 0 2px, transparent 2px 7px, rgba(255,220,180,.05) 7px 9px, transparent 9px 15px),
+      linear-gradient(90deg,var(--walnut-3),var(--walnut-2) 40%,var(--walnut-1) 70%,var(--walnut-3));
   }
-  .seg{
-    display:flex; background:var(--panel2); border-radius:10px; padding:4px; gap:4px;
-    flex-wrap:wrap; justify-content:center;
-  }
-  .seg button{
-    background:transparent; border:0; color:var(--muted); padding:8px 14px;
-    border-radius:8px; cursor:pointer; font-size:.9rem; font-weight:500;
-    transition:all .15s;
-  }
-  .seg button.active{background:var(--accent); color:#fff}
-  .seg button:hover:not(.active){color:var(--txt)}
-  button:focus-visible, input:focus-visible, .string:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .main{flex:1; min-width:0; display:flex; flex-direction:column}
+  .panel{background:linear-gradient(180deg,var(--panel-2),var(--panel)); padding:16px 22px 22px; border-bottom:3px solid #000}
+  .topbar{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 16px; border-bottom:1.5px solid var(--silk); padding-bottom:8px; margin-bottom:24px}
+  .brand{font-family:var(--label); font-weight:700; font-size:30px; letter-spacing:1px; line-height:1; margin:0}
+  .brand span{font-weight:500}
+  .tag{font-family:var(--label); font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--silk-dim)}
+  .serial{margin-left:auto; font-family:var(--label); font-size:12px; letter-spacing:2px; color:var(--silk-dim); font-variant-numeric:tabular-nums}
 
-  /* Nota grande */
-  .note-display{text-align:center; padding:10px 0}
-  .note{font-size:4.5rem; font-weight:700; line-height:1; transition:color .1s}
-  .note.ok{color:var(--ok)}
-  .freq{color:var(--muted); font-size:.9rem; margin-top:6px; font-variant-numeric:tabular-nums}
-  .target{color:var(--accent); font-size:.8rem; margin-top:2px; min-height:1.2em}
-
-  /* Aguja */
-  .gauge{position:relative; height:90px; margin:8px 0 4px; overflow:hidden}
-  .scale{
-    position:absolute; bottom:0; left:0; right:0; height:44px;
-    background:linear-gradient(90deg,var(--bad) 0%,var(--warn) 30%,var(--ok) 50%,var(--warn) 70%,var(--bad) 100%);
-    border-radius:8px; opacity:.25;
+  .grid{
+    display:grid; gap:26px 18px;
+    grid-template-columns:240px minmax(0,1fr) 230px 300px;
+    grid-template-areas:
+      "calib tune tune inst"
+      "strings strings metro metro";
   }
-  .ticks{position:absolute; bottom:4px; left:0; right:0; display:flex; justify-content:space-between; padding:0 6px; font-size:.65rem; color:var(--muted); font-variant-numeric:tabular-nums}
-  .center-line{
-    position:absolute; bottom:0; left:50%; width:2px; height:52px;
-    background:var(--ok); transform:translateX(-50%); opacity:.6;
+  .a-calib{grid-area:calib} .a-tune{grid-area:tune} .a-inst{grid-area:inst} .a-strings{grid-area:strings} .a-metro{grid-area:metro}
+  .section{border:1.5px solid var(--silk); border-top:none; padding:24px 14px 16px; position:relative; border-radius:0 0 3px 3px; min-width:0}
+  .section > h2{
+    position:absolute; top:-9px; left:-1.5px; right:-1.5px; margin:0;
+    display:flex; align-items:center; gap:8px;
+    font-family:var(--label); font-weight:600; font-size:13px; letter-spacing:2.5px; text-transform:uppercase; color:var(--silk);
   }
-  .needle{
-    position:absolute; bottom:0; left:50%; width:4px; height:60px; margin-left:-2px;
-    background:var(--txt); border-radius:2px; transform-origin:bottom center;
-    transform:rotate(0deg);
-    transition:transform .08s linear, background .15s;
-    box-shadow:0 0 12px rgba(255,255,255,.3);
+  .section > h2::before,.section > h2::after{content:""; height:1.5px; background:var(--silk); flex:1}
+  .section > h2::before{flex:0 0 10px}
+
+  .lbl{font-family:var(--label); font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--silk); text-align:center}
+  .lbl.dim{color:var(--silk-dim)}
+
+  /* LEDs */
+  .led{width:12px; height:12px; border-radius:50%; background:var(--led-off); box-shadow:inset 0 1px 2px rgba(0,0,0,.8); flex:none}
+  .led.on{background:var(--led); box-shadow:0 0 8px 2px rgba(255,42,26,.7), inset 0 1px 1px rgba(255,255,255,.4)}
+  .led.on.green{background:var(--green); box-shadow:0 0 8px 2px rgba(67,224,106,.6), inset 0 1px 1px rgba(255,255,255,.4)}
+  .led.on.amber{background:var(--amber); box-shadow:0 0 8px 2px rgba(255,176,32,.6), inset 0 1px 1px rgba(255,255,255,.4)}
+
+  /* Perillas */
+  .knobs{display:flex; justify-content:space-around; gap:10px}
+  .knob-wrap{display:flex; flex-direction:column; align-items:center; gap:6px}
+  .knob-dial{position:relative; width:96px; height:96px; touch-action:none; cursor:ns-resize; border-radius:50%}
+  .knob-dial svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible}
+  .knob-dial svg text{font-family:var(--label); font-size:9px; fill:var(--silk-dim)}
+  .knob{
+    position:absolute; left:50%; top:50%; width:60%; height:60%; transform-origin:center; translate:-50% -50%; border-radius:50%;
+    background:radial-gradient(circle at 40% 35%,#3a3a3a,#111 70%);
+    box-shadow:0 4px 8px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.12);
   }
-  .needle.idle{opacity:.35}
-  .cents{text-align:center; font-size:.85rem; color:var(--muted); margin-top:4px; font-variant-numeric:tabular-nums}
-  .advice{text-align:center; font-size:.9rem; font-weight:600; min-height:1.3em; margin-top:2px}
+  .knob::before{content:""; position:absolute; inset:20%; border-radius:50%; background:radial-gradient(circle at 40% 35%,#cfcfcf,#7d7d7d 75%); box-shadow:inset 0 -1px 2px rgba(0,0,0,.5)}
+  .knob::after{content:""; position:absolute; left:50%; top:5%; width:3px; height:26%; margin-left:-1.5px; background:var(--silk); border-radius:2px}
+  .knob-val{font-family:var(--label); font-size:15px; font-weight:600; letter-spacing:1px; font-variant-numeric:tabular-nums}
 
-  /* Cuerdas */
-  .strings{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:6px}
-  .string{
-    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
-    padding:8px 14px; min-width:64px; text-align:center; cursor:pointer; color:var(--txt);
-    font:inherit; transition:all .15s;
+  /* Displays de 7 segmentos */
+  .window{background:#0b0302; border:2px solid #000; box-shadow:inset 0 0 0 1px #2a0b07, inset 0 6px 14px rgba(0,0,0,.9); padding:10px 12px; border-radius:3px; display:flex; gap:5px; align-items:flex-start}
+  .window svg{display:block; height:var(--seg-h,48px); width:auto; aspect-ratio:44/70; filter:drop-shadow(0 0 4px rgba(255,42,26,.6))}
+  .readouts{display:flex; justify-content:center; flex-wrap:wrap; gap:18px 22px; align-items:flex-end}
+  .readout{display:flex; flex-direction:column; align-items:center; gap:6px}
+  .sharp{display:flex; flex-direction:column; gap:4px; align-items:center; margin-left:2px}
+  .sharp .led{width:9px; height:9px}
+  .sharp span{font-family:var(--label); font-size:12px; color:var(--silk-dim)}
+  #dNote{--seg-h:64px}
+
+  /* Escalera de LEDs */
+  .ladder-wrap{margin:20px auto 0; max-width:600px}
+  .ladder{display:flex; justify-content:center; gap:6px; align-items:center; padding:10px 12px; background:#0b0302; border:2px solid #000; border-radius:4px; box-shadow:inset 0 6px 14px rgba(0,0,0,.9)}
+  .ladder i{flex:1; max-width:21px; height:44px; border-radius:4px; background:var(--led-off); box-shadow:inset 0 1px 2px rgba(0,0,0,.8); transition:background .06s}
+  .ladder i.c{height:58px; max-width:24px; background:var(--green-off)}
+  .ladder i.a{background:var(--amber-off)}
+  .ladder i.on{background:var(--led); box-shadow:0 0 8px 2px rgba(255,42,26,.6), inset 0 1px 1px rgba(255,255,255,.4)}
+  .ladder i.a.on{background:var(--amber); box-shadow:0 0 8px 2px rgba(255,176,32,.6), inset 0 1px 1px rgba(255,255,255,.4)}
+  .ladder i.c.on{background:var(--green); box-shadow:0 0 12px 3px rgba(67,224,106,.6), inset 0 1px 1px rgba(255,255,255,.4)}
+  .scale,.direction{display:flex; justify-content:space-between; padding:0 12px; font-family:var(--label); letter-spacing:1px; color:var(--silk-dim)}
+  .scale{margin-top:8px; font-size:13px; font-variant-numeric:tabular-nums}
+  .direction{margin-top:4px; font-size:12px; text-transform:uppercase; letter-spacing:1.6px}
+  .direction .now{color:var(--silk)}
+
+  /* Botones */
+  .btn-unit{display:flex; flex-direction:column; align-items:center; gap:7px; min-width:0}
+  .key{
+    width:100%; min-height:38px; border-radius:3px; border:none; cursor:pointer; padding:4px 6px;
+    background:linear-gradient(180deg,var(--cap),var(--cap-dark));
+    box-shadow:0 3px 0 #5e5a52, 0 5px 8px rgba(0,0,0,.6);
+    font-family:var(--label); font-weight:700; font-size:13px; letter-spacing:1.5px; color:var(--cap-ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+    transition:transform .05s, box-shadow .05s;
   }
-  .string:hover{background:var(--hover)}
-  .string .n{font-size:1.1rem; font-weight:700}
-  .string .hz{font-size:.7rem; color:var(--muted); font-variant-numeric:tabular-nums}
-  .string.active{background:var(--active-bg); border-color:var(--accent); box-shadow:0 0 0 2px rgba(78,161,255,.25)}
-  .string.locked{border-style:dashed; border-color:var(--accent)}
-  .string.in-tune{border-color:var(--ok); box-shadow:0 0 0 2px rgba(40,209,124,.3)}
-  .strings-hint{text-align:center; font-size:.72rem; color:var(--muted); margin-top:10px}
-  .muted-msg{color:var(--muted); font-size:.85rem}
+  .key:active,.key.pressed{transform:translateY(2px); box-shadow:0 1px 0 #5e5a52, 0 2px 4px rgba(0,0,0,.6)}
+  .key.dark{background:linear-gradient(180deg,#3b3b3b,#232323); color:var(--silk); box-shadow:0 3px 0 #000, 0 5px 8px rgba(0,0,0,.6)}
+  .key.dark:active,.key.dark.pressed{box-shadow:0 1px 0 #000, 0 2px 4px rgba(0,0,0,.6)}
+  .key small{font-weight:500; font-size:11px; letter-spacing:.5px; color:#3d3a34; font-variant-numeric:tabular-nums}
+  .inst{display:grid; grid-template-columns:repeat(5,1fr); gap:12px 10px}
+  .modes{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:18px}
+  .strings{display:grid; grid-template-columns:repeat(6,1fr); gap:12px 10px}
+  .strings .key{min-height:46px}
+  .strings-empty{font-family:var(--label); letter-spacing:1.5px; text-transform:uppercase; color:var(--silk-dim); text-align:center; padding:14px 0}
+  .hint{font-size:12px; color:var(--silk-dim); margin:14px 0 0; text-align:center; line-height:1.45}
 
-  /* Transposición */
-  .transpose{display:flex; align-items:center; justify-content:center; gap:12px; margin-top:4px}
-  .transpose button{
-    width:40px; height:40px; border-radius:50%; border:1px solid var(--line);
-    background:var(--panel2); color:var(--txt); font-size:1.2rem; cursor:pointer;
-    transition:all .15s;
+  .mic-row{display:flex; align-items:center; gap:14px; margin-top:16px; padding-top:14px; border-top:1px dashed var(--silk-dim)}
+  .mic-row .key{width:96px; min-height:36px}
+  .mic-text{display:flex; flex-direction:column; gap:6px; min-width:0}
+  .mic-text .lbl{text-align:left}
+  .mic-text .err{color:var(--led); text-transform:none; letter-spacing:.3px; font-family:var(--body); font-size:12px; line-height:1.4}
+
+  /* Metrónomo */
+  .metro{display:grid; grid-template-columns:auto auto minmax(0,1fr); gap:16px; align-items:center}
+  .metro-col{display:flex; flex-direction:column; align-items:center; gap:6px}
+  #dBpm{--seg-h:40px}
+  #kTempo{width:80px; height:80px}
+  .metro-ctrl{display:flex; flex-direction:column; gap:12px; min-width:0}
+  .beats{display:flex; gap:10px; justify-content:center; min-height:16px}
+  .beats .led{width:16px; height:16px}
+  .sig{display:grid; grid-template-columns:repeat(4,1fr); gap:6px}
+  .sig .key{min-height:28px; font-size:12px}
+  .transport{display:flex; gap:8px}
+  .transport .key{min-height:32px}
+
+  /* Teclado */
+  .keyboard{position:relative; height:118px; background:#0d0d0d; padding:0 6px 6px; display:flex; border-top:8px solid #0d0d0d}
+  .white{flex:1; margin:0 1px; border:none; padding:0; cursor:pointer; position:relative;
+    background:linear-gradient(180deg,#1c1c1c,#141414 85%,#0c0c0c); border-radius:0 0 4px 4px;
+    box-shadow:inset 0 -6px 0 rgba(255,255,255,.04), inset 1px 0 0 rgba(255,255,255,.05)}
+  .black{position:absolute; top:0; width:3%; min-width:14px; height:62%; border:none; padding:0; cursor:pointer; translate:-50% 0; z-index:2;
+    background:linear-gradient(180deg,#2e2e2e,#232323); border-radius:0 0 3px 3px;
+    box-shadow:0 3px 5px rgba(0,0,0,.8), inset 0 -3px 0 #383838, inset 0 1px 0 rgba(255,255,255,.08)}
+  .white.lit{background:linear-gradient(180deg,#1c1c1c,#3a0d09 80%,#5a140c); box-shadow:inset 0 -6px 0 rgba(255,42,26,.35)}
+  .black.lit{background:linear-gradient(180deg,#2e2e2e,#5a140c)}
+  .white.tgt::after,.black.tgt::after{content:""; position:absolute; left:50%; bottom:12px; width:6px; height:6px; margin-left:-3px; border-radius:50%; background:var(--silk-dim)}
+  .black.tgt::after{bottom:8px}
+  .kb-label{position:absolute; bottom:22px; left:50%; translate:-50% 0; font-family:var(--label); font-size:10px; letter-spacing:1px; color:#4a4740; pointer-events:none}
+
+  /* Pantallas medianas */
+  @media (max-width:1180px){
+    .grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-areas:"tune tune" "strings strings" "calib inst" "metro metro"}
   }
-  .transpose button:hover{background:var(--hover)}
-  .transpose button:disabled{opacity:.35; cursor:not-allowed}
-  .transpose .val{min-width:60px; text-align:center; font-weight:600; font-size:1.05rem}
-
-  .status{text-align:center; font-size:.85rem; color:var(--muted); min-height:1.2em; margin-top:10px}
-  .status.on{color:var(--ok)}
-  .status.err{color:var(--bad)}
-
-  .btn{
-    background:var(--accent); color:#fff; border:0; border-radius:12px;
-    padding:12px 22px; font-size:1rem; font-weight:600; cursor:pointer;
-    transition:all .15s; width:100%; max-width:300px;
+  /* Celular */
+  @media (max-width:720px){
+    body{padding-block:10px}
+    .cheek{width:12px}
+    .panel{padding:12px 12px 18px}
+    .topbar{margin-bottom:22px}
+    .brand{font-size:24px}
+    .serial{display:none}
+    .grid{grid-template-columns:minmax(0,1fr); grid-template-areas:"tune" "strings" "inst" "calib" "metro"; gap:24px}
+    .section{padding:22px 10px 14px}
+    #dNote{--seg-h:52px}
+    .readouts{gap:12px}
+    .readouts .window{--seg-h:34px; padding:8px}
+    .ladder{gap:3px; padding:8px 6px}
+    .ladder i{height:38px}
+    .ladder i.c{height:50px}
+    .scale,.direction{padding:0 6px}
+    .strings{grid-template-columns:repeat(3,1fr)}
+    .inst{gap:8px 6px}
+    .inst .key{font-size:12px; letter-spacing:1px; padding:4px 2px}
+    .inst .lbl{font-size:10px; letter-spacing:1px}
+    .metro{grid-template-columns:auto auto; justify-content:center}
+    .metro-ctrl{grid-column:1 / -1}
+    .keyboard{height:92px}
+    .kb-label{display:none}
   }
-  .btn:hover{filter:brightness(1.1)}
-  .btn.stop{background:var(--bad)}
-  .btn:disabled{opacity:.5; cursor:not-allowed}
-
-  .calib{display:flex; align-items:center; justify-content:center; gap:8px; font-size:.8rem; color:var(--muted); flex-wrap:wrap; margin-top:12px}
-  .calib input{width:70px; background:var(--panel2); border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 8px; text-align:center; font-size:.85rem}
-  .mini-btn{background:var(--panel2); border:1px solid var(--line); color:var(--txt); padding:5px 10px; border-radius:8px; cursor:pointer; font-size:.8rem}
-  .mini-btn:hover{background:var(--hover)}
-  .calib-msg{width:100%; text-align:center; min-height:1em; font-size:.75rem}
-  .calib-msg.err{color:var(--bad)}
-  .hint{font-size:.75rem; color:var(--muted); text-align:center; max-width:420px; line-height:1.5}
-  @media (prefers-reduced-motion: reduce){ .needle, .string, .btn{transition:none} }
+  @media (prefers-reduced-motion: reduce){ .key,.ladder i{transition:none} }
 </style>
 </head>
 <body>
+<div class="synth">
+  <div class="cheek"></div>
+  <div class="main">
+    <div class="panel">
+      <div class="topbar">
+        <h1 class="brand">AFINADOR<span>-5</span></h1>
+        <div class="tag">Afinador multinstrumento programable</div>
+        <div class="serial" id="serial">A4 = 440 HZ · YIN</div>
+      </div>
 
-<h1>🎸 Afinador Multinstrumento</h1>
-<div class="sub">Guitarra · Bajo · Ukelele · Cuatro</div>
+      <div class="grid">
+        <section class="section a-calib">
+          <h2>Calibración</h2>
+          <div class="knobs">
+            <div class="knob-wrap">
+              <div class="knob-dial" id="kA4" tabindex="0" role="slider" aria-label="Tono A4 en hercios"></div>
+              <div class="knob-val" id="vA4">440 Hz</div>
+              <div class="lbl">Tono A4</div>
+            </div>
+            <div class="knob-wrap">
+              <div class="knob-dial" id="kTr" tabindex="0" role="slider" aria-label="Transposición en semitonos"></div>
+              <div class="knob-val" id="vTr">0 ST</div>
+              <div class="lbl">Transposición</div>
+            </div>
+          </div>
+          <div class="mic-row">
+            <div class="btn-unit"><div class="led" id="micLed"></div><button class="key dark" id="micBtn" aria-pressed="false">MIC</button></div>
+            <div class="mic-text">
+              <div class="lbl" id="micStatus">Apagado</div>
+              <div class="lbl dim" id="micLevel">Toca MIC para empezar</div>
+            </div>
+          </div>
+        </section>
 
-<div class="card">
-  <div class="seg" id="instrumentSeg">
-    <button data-inst="guitar" class="active">Guitarra</button>
-    <button data-inst="bass">Bajo</button>
-    <button data-inst="ukulele">Ukelele</button>
-    <button data-inst="cuatro">Cuatro</button>
-    <button data-inst="chromatic">Cromático</button>
+        <section class="section a-tune">
+          <h2>Afinación</h2>
+          <div class="readouts">
+            <div class="readout">
+              <div class="window" id="dNoteWin"><span id="dNote" style="display:flex; gap:5px"></span><div class="sharp"><div class="led" id="sharpLed"></div><span>#</span></div></div>
+              <div class="lbl">Nota</div>
+            </div>
+            <div class="readout">
+              <div class="window" id="dHz"></div>
+              <div class="lbl">Frecuencia Hz</div>
+            </div>
+            <div class="readout">
+              <div class="window" id="dCents"></div>
+              <div class="lbl">Cents</div>
+            </div>
+          </div>
+          <div class="ladder-wrap">
+            <div class="ladder" id="ladder" aria-hidden="true"></div>
+            <div class="scale"><span>−50</span><span>−25</span><span>0</span><span>+25</span><span>+50</span></div>
+            <div class="direction"><span id="dirLow">◂ Bajo (aprieta)</span><span id="dirOk"></span><span id="dirHigh">(afloja) Alto ▸</span></div>
+          </div>
+        </section>
+
+        <section class="section a-inst">
+          <h2>Instrumento</h2>
+          <div class="inst" id="instBtns"></div>
+          <div class="modes">
+            <div class="btn-unit"><div class="led" id="autoLed"></div><button class="key dark" id="autoBtn" title="La cuerda objetivo se elige sola según lo que suena">AUTO</button></div>
+            <div class="btn-unit"><div class="led" id="toneLed"></div><button class="key dark" id="toneBtn" title="Al tocar una cuerda o tecla suena su tono de referencia">TONO</button></div>
+          </div>
+        </section>
+
+        <section class="section a-strings">
+          <h2 id="stringsTitle">Cuerdas</h2>
+          <div class="strings" id="strings"></div>
+          <p class="hint">Toca una cuerda para fijarla como objetivo y oír su tono. Tócala otra vez o pulsa AUTO para volver al modo automático.</p>
+        </section>
+
+        <section class="section a-metro">
+          <h2>Metrónomo</h2>
+          <div class="metro">
+            <div class="metro-col">
+              <div class="window" id="dBpm"></div>
+              <div class="lbl">BPM</div>
+            </div>
+            <div class="knob-wrap">
+              <div class="knob-dial" id="kTempo" tabindex="0" role="slider" aria-label="Tempo en pulsos por minuto"></div>
+              <div class="lbl">Tempo</div>
+            </div>
+            <div class="metro-ctrl">
+              <div class="beats" id="beats"></div>
+              <div class="sig" id="sigBtns"></div>
+              <div class="transport">
+                <button class="key dark" id="playBtn" style="flex:2">▶ START</button>
+                <button class="key dark" id="tapBtn" style="flex:1">TAP</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div class="keyboard" id="kb"></div>
   </div>
-</div>
-
-<div class="card">
-  <div class="note-display">
-    <div class="note" id="noteDisplay">—</div>
-    <div class="freq" id="freqDisplay">0.0 Hz</div>
-    <div class="target" id="targetDisplay"></div>
-  </div>
-
-  <div class="gauge">
-    <div class="scale"></div>
-    <div class="ticks"><span>−50</span><span>−25</span><span></span><span>+25</span><span>+50</span></div>
-    <div class="center-line"></div>
-    <div class="needle idle" id="needle"></div>
-  </div>
-  <div class="cents" id="centsDisplay">0 cents</div>
-  <div class="advice" id="adviceDisplay"></div>
-</div>
-
-<div class="card">
-  <div class="strings" id="stringsRow"></div>
-  <div class="strings-hint" id="stringsHint">Toca una cuerda en pantalla para oír su tono y fijarla como objetivo. Tócala otra vez para volver a modo automático.</div>
-</div>
-
-<div class="card">
-  <div class="transpose">
-    <button id="downBtn" title="Bajar semitono" aria-label="Bajar semitono">−</button>
-    <div class="val" id="transposeVal">0 st</div>
-    <button id="upBtn" title="Subir semitono" aria-label="Subir semitono">+</button>
-  </div>
-  <div class="calib">
-    <label for="a4Input">Calibración A4:</label>
-    <input type="number" id="a4Input" value="440" min="415" max="466" step="1"> Hz
-    <button id="a4Apply" class="mini-btn">Aplicar</button>
-    <div class="calib-msg" id="a4Msg"></div>
-  </div>
-</div>
-
-<div class="card" style="text-align:center">
-  <button class="btn" id="startBtn">🎤 Activar micrófono</button>
-  <div class="status" id="status">Micrófono desactivado</div>
-</div>
-
-<div class="hint">
-  Toca una cuerda y acerca el dispositivo al instrumento. La aguja al centro y el color verde indican afinación correcta.<br>
-  El micrófono requiere HTTPS o localhost y permiso del navegador. Usa audífonos para evitar realimentación.
+  <div class="cheek"></div>
 </div>
 
 <script>
-// ====== Datos de instrumentos ======
+// ====== Datos ======
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const INSTRUMENTS = {
-  guitar: { name:'Guitarra', strings:[
-    {label:'E2', midi:40}, {label:'A2', midi:45}, {label:'D3', midi:50},
-    {label:'G3', midi:55}, {label:'B3', midi:59}, {label:'E4', midi:64},
-  ]},
-  bass: { name:'Bajo', strings:[
-    {label:'E1', midi:28}, {label:'A1', midi:33}, {label:'D2', midi:38}, {label:'G2', midi:43},
-  ]},
-  ukulele: { name:'Ukelele', strings:[
-    {label:'G4', midi:67}, {label:'C4', midi:60}, {label:'E4', midi:64}, {label:'A4', midi:69},
-  ]},
-  cuatro: { name:'Cuatro',
-    // Cuatro venezolano: A3 D4 F#4 B3 (reentrante: el Si va una octava abajo)
-    strings:[
-      {label:'A3', midi:57}, {label:'D4', midi:62}, {label:'F#4', midi:66}, {label:'B3', midi:59},
-    ]},
-  chromatic: { name:'Cromático', strings:[] }
+  guitar:   { code:'GTR', name:'Guitarra', title:'Guitarra estándar', strings:[40,45,50,55,59,64] },
+  bass:     { code:'BAJ', name:'Bajo',     title:'Bajo de 4 cuerdas', strings:[28,33,38,43] },
+  ukulele:  { code:'UKE', name:'Ukelele',  title:'Ukelele GCEA',      strings:[67,60,64,69] },
+  // Cuatro venezolano: A3 D4 F#4 B3 (reentrante: el Si va una octava abajo)
+  cuatro:   { code:'CUA', name:'Cuatro',   title:'Cuatro venezolano', strings:[57,62,66,59] },
+  chromatic:{ code:'CRO', name:'Cromát.',  title:'Modo cromático',    strings:[] },
 };
+const SIGNATURES = [['2/4',2],['3/4',3],['4/4',4],['6/8',6]];
+const IN_TUNE_CENTS = 5, WARN_CENTS = 15;
+const ANALYSIS_INTERVAL_MS = 40, HOLD_MS = 700;
 
-const IN_TUNE_CENTS = 5;
-const WARN_CENTS = 15;
-const ANALYSIS_INTERVAL_MS = 40;   // ~25 análisis por segundo
-const HOLD_MS = 700;               // mantener la última lectura tras perder señal
-
-// ====== Estado ======
 const state = {
-  instrument: 'guitar',
-  transpose: 0,
-  a4: 440,
-  running: false,
-  starting: false,
-  audioCtx: null, analyser: null, source: null, stream: null,
-  buffer: null, yin: null,
-  raf: null,
-  lastAnalysis: 0,
-  lastSignal: 0,
-  freqHistory: [],
-  smoothCents: null,
-  lockedIdx: null,      // cuerda fijada a mano (null = automático)
-  toneCtx: null,
+  instrument:'guitar', transpose:0, a4:440, lockedIdx:null, tone:true,
+  running:false, starting:false, audioCtx:null, analyser:null, source:null, stream:null, buffer:null, yin:null, raf:null,
+  lastAnalysis:0, lastSignal:0, freqHistory:[], smoothCents:null,
+  outCtx:null,
+  bpm:120, sig:'4/4', metro:{ running:false, beat:0, nextTime:0, timer:null, queue:[], raf:null, taps:[] },
 };
 
-// ====== Preferencias (opcional) ======
+// ====== Preferencias ======
 function loadPrefs(){
   try {
-    const p = JSON.parse(localStorage.getItem('afinador-prefs') || '{}');
+    const p = JSON.parse(localStorage.getItem('afinador5') || '{}');
     if (INSTRUMENTS[p.instrument]) state.instrument = p.instrument;
     if (Number.isInteger(p.transpose) && Math.abs(p.transpose) <= 6) state.transpose = p.transpose;
     if (p.a4 >= 415 && p.a4 <= 466) state.a4 = p.a4;
+    if (p.bpm >= 40 && p.bpm <= 240) state.bpm = p.bpm;
+    if (SIGNATURES.some(s => s[0] === p.sig)) state.sig = p.sig;
+    if (typeof p.tone === 'boolean') state.tone = p.tone;
   } catch(e){}
 }
 function savePrefs(){
-  try {
-    localStorage.setItem('afinador-prefs', JSON.stringify({instrument:state.instrument, transpose:state.transpose, a4:state.a4}));
-  } catch(e){}
+  try { localStorage.setItem('afinador5', JSON.stringify({instrument:state.instrument, transpose:state.transpose, a4:state.a4, bpm:state.bpm, sig:state.sig, tone:state.tone})); } catch(e){}
 }
 
-// ====== Utilidades de música ======
-function midiToFreq(midi, a4 = 440){ return a4 * Math.pow(2, (midi - 69) / 12); }
-function freqToMidi(freq, a4 = 440){ return 69 + 12 * Math.log2(freq / a4); }
-function midiToName(midi){
-  const m = Math.round(midi);
-  return NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
-}
-function centsBetween(freq, ref){ return 1200 * Math.log2(freq / ref); }
-
+// ====== Música ======
+const midiToFreq = (m, a4 = state.a4) => a4 * Math.pow(2, (m - 69) / 12);
+const freqToMidi = (f, a4 = state.a4) => 69 + 12 * Math.log2(f / a4);
+const centsBetween = (f, ref) => 1200 * Math.log2(f / ref);
+function midiToName(m){ m = Math.round(m); return NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1); }
 function currentStrings(){
-  return INSTRUMENTS[state.instrument].strings.map((s, idx) => {
-    const midi = s.midi + state.transpose;
-    return { idx, midi, freq: midiToFreq(midi, state.a4), name: midiToName(midi) };
+  return INSTRUMENTS[state.instrument].strings.map((m0, idx) => {
+    const midi = m0 + state.transpose;
+    return { idx, midi, freq: midiToFreq(midi), name: midiToName(midi) };
   });
 }
-
-// Rango de búsqueda según el instrumento (más estrecho = más rápido y menos errores de octava)
 function pitchRange(){
-  const strs = currentStrings();
-  if (!strs.length) return { min: 30, max: 1500 };
-  const fs = strs.map(s => s.freq);
+  const fs = currentStrings().map(s => s.freq);
+  if (!fs.length) return { min:30, max:1500 };
   return { min: Math.max(25, Math.min(...fs) * 0.7), max: Math.min(1500, Math.max(...fs) * 1.6) };
 }
 
 // ====== Detección de tono (YIN acotado al rango del instrumento) ======
-// Sustituye la autocorrelación O(n²) completa: solo evalúa los desfases útiles
-// y usa la diferencia normalizada de YIN, que evita casi todos los saltos de octava.
 function detectPitch(buf, sampleRate, minF, maxF){
   const N = buf.length;
   let rms = 0;
   for (let i = 0; i < N; i++) rms += buf[i] * buf[i];
   rms = Math.sqrt(rms / N);
-  if (rms < 0.008) return -1; // silencio
+  state.rms = rms;
+  if (rms < 0.008) return -1;
 
   const tauMin = Math.max(2, Math.floor(sampleRate / maxF));
   const tauMax = Math.min(Math.floor(N / 2), Math.ceil(sampleRate / minF));
   if (tauMax <= tauMin + 2) return -1;
   const W = N - tauMax;
-
   if (!state.yin || state.yin.length < tauMax + 2) state.yin = new Float32Array(tauMax + 2);
   const d = state.yin;
   d[0] = 1;
   let running = 0;
   for (let tau = 1; tau <= tauMax; tau++){
     let sum = 0;
-    for (let i = 0; i < W; i++){
-      const delta = buf[i] - buf[i + tau];
-      sum += delta * delta;
-    }
+    for (let i = 0; i < W; i++){ const delta = buf[i] - buf[i + tau]; sum += delta * delta; }
     running += sum;
-    d[tau] = running ? sum * tau / running : 1;   // diferencia normalizada acumulada
+    d[tau] = running ? sum * tau / running : 1;
   }
-
-  const THRESH = 0.12;
   let tau = -1;
   for (let t = tauMin; t <= tauMax; t++){
-    if (d[t] < THRESH){
-      while (t + 1 <= tauMax && d[t + 1] < d[t]) t++;
-      tau = t; break;
-    }
+    if (d[t] < 0.12){ while (t + 1 <= tauMax && d[t + 1] < d[t]) t++; tau = t; break; }
   }
   if (tau === -1){
-    // Sin cruce claro: usar el mínimo global si es razonablemente bueno
     let best = Infinity;
     for (let t = tauMin; t <= tauMax; t++) if (d[t] < best){ best = d[t]; tau = t; }
     if (best > 0.3) return -1;
   }
-
-  // Interpolación parabólica
   let T0 = tau;
   if (tau > 1 && tau < tauMax){
-    const x1 = d[tau - 1], x2 = d[tau], x3 = d[tau + 1];
-    const a = x1 + x3 - 2 * x2;
+    const x1 = d[tau - 1], x2 = d[tau], x3 = d[tau + 1], a = x1 + x3 - 2 * x2;
     if (a) T0 = tau + (x1 - x3) / (2 * a);
   }
   return sampleRate / T0;
 }
-
-// Mediana de las últimas lecturas para descartar saltos aislados
-function smoothFreq(freq){
+function smoothFreq(f){
   const h = state.freqHistory;
-  if (h.length && Math.abs(centsBetween(freq, h[h.length - 1])) > 80) h.length = 0; // cambio de nota
-  h.push(freq);
-  if (h.length > 5) h.shift();
-  const sorted = [...h].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+  if (h.length && Math.abs(centsBetween(f, h[h.length - 1])) > 80) h.length = 0;
+  h.push(f); if (h.length > 5) h.shift();
+  const s = [...h].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
 }
 
-// ====== UI ======
+// ====== 7 segmentos ======
+const SEG = {'0':'abcdef','1':'bc','2':'abdeg','3':'abcdg','4':'bcfg','5':'acdfg','6':'acdefg','7':'abc','8':'abcdefg','9':'abcdfg',
+  'A':'abcefg','B':'cdefg','C':'adef','D':'bcdeg','E':'adefg','F':'aefg','G':'acdef','-':'g',' ':''};
+const SEG_POLY = { a:'8,4 32,4 28,9 12,9', b:'33,6 33,33 29,30 29,10', c:'33,37 33,64 29,60 29,40',
+  d:'8,66 32,66 28,61 12,61', e:'7,37 11,40 11,60 7,64', f:'7,6 11,10 11,30 7,33', g:'9,35 13,32 27,32 31,35 27,38 13,38' };
+function segDigit(ch, dp){
+  const on = SEG[ch] || '';
+  let s = '<svg viewBox="0 0 44 70" aria-hidden="true">';
+  for (const k in SEG_POLY) s += `<polygon points="${SEG_POLY[k]}" fill="${on.includes(k) ? 'var(--led)' : 'var(--seg-off)'}" transform="skewX(-6) translate(4 0)"/>`;
+  return s + `<circle cx="39" cy="64" r="2.6" fill="${dp ? 'var(--led)' : 'var(--seg-off)'}"/></svg>`;
+}
+function segText(text){
+  let out = '';
+  for (let i = 0; i < text.length; i++){ if (text[i] === '.') continue; out += segDigit(text[i], text[i + 1] === '.'); }
+  return out;
+}
+const segCache = new Map();
+function setSeg(el, text, label){
+  if (segCache.get(el) === text) return;
+  segCache.set(el, text);
+  el.innerHTML = segText(text);
+  if (label != null) el.setAttribute('aria-label', label);
+}
+
+// ====== Elementos ======
 const $ = id => document.getElementById(id);
 const el = {
-  note: $('noteDisplay'), freq: $('freqDisplay'), target: $('targetDisplay'),
-  needle: $('needle'), cents: $('centsDisplay'), advice: $('adviceDisplay'),
-  stringsRow: $('stringsRow'), stringsHint: $('stringsHint'),
-  status: $('status'), startBtn: $('startBtn'),
-  transposeVal: $('transposeVal'), upBtn: $('upBtn'), downBtn: $('downBtn'),
-  a4Input: $('a4Input'), a4Apply: $('a4Apply'), a4Msg: $('a4Msg'),
-  instrumentSeg: $('instrumentSeg'),
+  dNote:$('dNote'), sharpLed:$('sharpLed'), dHz:$('dHz'), dCents:$('dCents'), ladder:$('ladder'),
+  dirLow:$('dirLow'), dirHigh:$('dirHigh'), dirOk:$('dirOk'),
+  instBtns:$('instBtns'), strings:$('strings'), stringsTitle:$('stringsTitle'),
+  autoBtn:$('autoBtn'), autoLed:$('autoLed'), toneBtn:$('toneBtn'), toneLed:$('toneLed'),
+  micBtn:$('micBtn'), micLed:$('micLed'), micStatus:$('micStatus'), micLevel:$('micLevel'),
+  vA4:$('vA4'), vTr:$('vTr'), serial:$('serial'),
+  dBpm:$('dBpm'), beats:$('beats'), sigBtns:$('sigBtns'), playBtn:$('playBtn'), tapBtn:$('tapBtn'),
+  kb:$('kb'),
 };
-let stringEls = [];
+const ladderLeds = [];
+for (let i = 0; i <= 20; i++){
+  const d = Math.abs(i - 10);
+  const led = document.createElement('i');
+  if (d === 0) led.className = 'c'; else if (d <= 2) led.className = 'a';
+  el.ladder.appendChild(led); ladderLeds.push(led);
+}
 
-function renderStrings(){
-  const strs = currentStrings();
-  el.stringsRow.innerHTML = '';
-  stringEls = [];
-  el.stringsHint.hidden = strs.length === 0;
-  if (!strs.length){
-    el.stringsRow.innerHTML = '<div class="muted-msg">Modo cromático: cualquier nota</div>';
-    return;
+// ====== Perillas ======
+function makeKnob(id, {min, max, step = 1, value, pxPerStep = 6, ticks = 11, labels, onChange, reset}){
+  const dial = $(id);
+  let s = '<svg viewBox="0 0 96 96">';
+  for (let i = 0; i < ticks; i++){
+    const a = (-135 + 270 * i / (ticks - 1)) * Math.PI / 180, major = i % 5 === 0 || i === ticks - 1;
+    const r1 = 38, r2 = major ? 46 : 43;
+    s += `<line x1="${48 + r1*Math.sin(a)}" y1="${48 - r1*Math.cos(a)}" x2="${48 + r2*Math.sin(a)}" y2="${48 - r2*Math.cos(a)}" stroke="var(--silk)" stroke-width="${major ? 1.6 : 1}"/>`;
   }
-  strs.forEach(s => {
-    const b = document.createElement('button');
-    b.className = 'string' + (state.lockedIdx === s.idx ? ' locked active' : '');
-    b.dataset.idx = s.idx;
-    b.title = 'Oír ' + s.name + ' y fijarla como objetivo';
-    b.innerHTML = `<div class="n">${s.name}</div><div class="hz">${s.freq.toFixed(1)} Hz</div>`;
-    el.stringsRow.appendChild(b);
-    stringEls.push(b);
+  labels.forEach(([txt, deg]) => {
+    const a = deg * Math.PI / 180;
+    s += `<text x="${48 + 54*Math.sin(a)}" y="${48 - 54*Math.cos(a) + 3}" text-anchor="middle">${txt}</text>`;
   });
+  dial.innerHTML = s + '</svg><div class="knob"></div>';
+  const cap = dial.querySelector('.knob');
+  const k = { value };
+  k.set = (v, silent) => {
+    v = Math.max(min, Math.min(max, Math.round(v / step) * step));
+    k.value = v;
+    cap.style.transform = `rotate(${(v - min) / (max - min) * 270 - 135}deg)`;
+    dial.setAttribute('aria-valuemin', min); dial.setAttribute('aria-valuemax', max); dial.setAttribute('aria-valuenow', v);
+    if (!silent) onChange(v);
+  };
+  let startY = 0, startV = 0, dragging = false;
+  dial.addEventListener('pointerdown', e => { dragging = true; startY = e.clientY; startV = k.value; dial.setPointerCapture(e.pointerId); });
+  dial.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const v = startV + Math.round((startY - e.clientY) / pxPerStep) * step;
+    if (v !== k.value) k.set(v);
+  });
+  const end = () => dragging = false;
+  dial.addEventListener('pointerup', end); dial.addEventListener('pointercancel', end);
+  dial.addEventListener('wheel', e => { e.preventDefault(); k.set(k.value + (e.deltaY < 0 ? step : -step)); }, { passive:false });
+  dial.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight'){ e.preventDefault(); k.set(k.value + step); }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowLeft'){ e.preventDefault(); k.set(k.value - step); }
+  });
+  dial.addEventListener('dblclick', () => k.set(reset));
+  k.set(value, true);
+  return k;
 }
 
-function updateTransposeUI(){
-  el.transposeVal.textContent = (state.transpose > 0 ? '+' : '') + state.transpose + ' st';
-  el.upBtn.disabled = state.transpose >= 6;
-  el.downBtn.disabled = state.transpose <= -6;
+// ====== Render ======
+function renderInstruments(){
+  el.instBtns.innerHTML = Object.entries(INSTRUMENTS).map(([key, inst]) =>
+    `<div class="btn-unit"><div class="led ${key === state.instrument ? 'on' : ''}"></div>` +
+    `<button class="key ${key === state.instrument ? 'pressed' : ''}" data-inst="${key}" aria-pressed="${key === state.instrument}">${inst.code}</button>` +
+    `<div class="lbl dim">${inst.name}</div></div>`).join('');
+}
+let stringBtns = [], stringLeds = [];
+function renderStrings(){
+  const inst = INSTRUMENTS[state.instrument], strs = currentStrings();
+  el.stringsTitle.textContent = 'Cuerdas · ' + inst.title;
+  if (!strs.length){
+    el.strings.style.display = 'block';
+    el.strings.innerHTML = '<div class="strings-empty">Cualquier nota · toca el teclado para oír una referencia</div>';
+  } else {
+    el.strings.style.display = '';
+    el.strings.innerHTML = strs.map((s, i) =>
+      `<div class="btn-unit"><div class="led"></div><button class="key" data-idx="${i}">${s.name}<small>${s.freq.toFixed(1)} Hz</small></button>` +
+      `<div class="lbl dim">Cuerda ${strs.length - i}</div></div>`).join('');
+  }
+  stringBtns = [...el.strings.querySelectorAll('.key')];
+  stringLeds = [...el.strings.querySelectorAll('.led')];
+  updateModeLeds();
+  renderKeyboard();
+}
+function updateModeLeds(){
+  const hasStrings = currentStrings().length > 0;
+  el.autoLed.classList.toggle('on', hasStrings && state.lockedIdx == null);
+  el.toneLed.classList.toggle('on', state.tone);
+  el.toneBtn.setAttribute('aria-pressed', state.tone);
+  stringBtns.forEach((b, i) => b.classList.toggle('pressed', i === state.lockedIdx));
+}
+function renderCalib(){
+  el.vA4.textContent = state.a4 + ' Hz';
+  el.vTr.textContent = (state.transpose > 0 ? '+' : '') + state.transpose + ' ST';
+  el.serial.textContent = `A4 = ${state.a4} HZ · ${state.transpose ? (state.transpose > 0 ? '+' : '') + state.transpose + ' ST · ' : ''}YIN`;
 }
 
-function setStatus(text, kind){
-  el.status.textContent = text;
-  el.status.classList.toggle('on', kind === 'on');
-  el.status.classList.toggle('err', kind === 'err');
+// Teclado de 2 octavas que empieza en la nota natural de la cuerda más grave
+let kbKeys = new Map(), kbStart = 48;
+function renderKeyboard(){
+  const strs = currentStrings();
+  let start = strs.length ? Math.min(...strs.map(s => s.midi)) : 48;
+  while ([1,3,6,8,10].includes(((start % 12) + 12) % 12)) start--;
+  kbStart = start;
+  const end = start + 24;
+  const targets = new Set(strs.map(s => s.midi));
+  const whites = [];
+  for (let m = start; m <= end; m++) if (![1,3,6,8,10].includes(((m % 12) + 12) % 12)) whites.push(m);
+  let html = whites.map(m => `<button class="white ${targets.has(m) ? 'tgt' : ''}" data-midi="${m}" aria-label="${midiToName(m)}">${m % 12 === 0 ? `<span class="kb-label">${midiToName(m)}</span>` : ''}</button>`).join('');
+  whites.forEach((m, i) => {
+    const b = m + 1;
+    if (i < whites.length - 1 && [1,3,6,8,10].includes(((b % 12) + 12) % 12)){
+      html += `<button class="black ${targets.has(b) ? 'tgt' : ''}" data-midi="${b}" data-w="${i + 1}" aria-label="${midiToName(b)}"></button>`;
+    }
+  });
+  el.kb.innerHTML = html;
+  const n = whites.length;
+  el.kb.querySelectorAll('.black').forEach(b => { b.style.left = `calc(6px + (100% - 12px) * ${b.dataset.w / n})`; });
+  kbKeys = new Map([...el.kb.querySelectorAll('[data-midi]')].map(k => [Number(k.dataset.midi), k]));
+}
+let litKey = null;
+function lightKey(midi){
+  let k = kbKeys.get(midi);
+  if (!k && midi != null){ // fuera del rango: mostrar la misma nota en otra octava
+    for (let m = kbStart + (((midi - kbStart) % 12) + 12) % 12; m <= kbStart + 24; m += 12){ if (kbKeys.has(m)){ k = kbKeys.get(m); break; } }
+  }
+  if (litKey === k) return;
+  if (litKey) litKey.classList.remove('lit');
+  litKey = k || null;
+  if (litKey) litKey.classList.add('lit');
+}
+
+function setLadder(cents){
+  ladderLeds.forEach(l => l.classList.remove('on'));
+  if (cents == null) return;
+  const pos = Math.max(0, Math.min(20, Math.round(cents / 5) + 10));
+  const [a, b] = pos < 10 ? [pos, 9] : pos > 10 ? [11, pos] : [10, 10];
+  for (let i = a; i <= b; i++) ladderLeds[i].classList.add('on');
+  if (pos === 10) ladderLeds[10].classList.add('on');
 }
 
 function clearReading(){
-  el.note.textContent = '—';
-  el.note.classList.remove('ok');
-  el.freq.textContent = '0.0 Hz';
-  el.cents.textContent = '0 cents';
-  el.advice.textContent = '';
-  el.target.textContent = state.lockedIdx != null ? 'Objetivo fijado: ' + currentStrings()[state.lockedIdx].name : '';
-  el.needle.style.transform = 'rotate(0deg)';
-  el.needle.style.background = 'var(--txt)';
-  el.needle.classList.add('idle');
-  stringEls.forEach(s => s.classList.remove('active','in-tune'));
-  if (state.lockedIdx != null && stringEls[state.lockedIdx]) stringEls[state.lockedIdx].classList.add('active');
-  state.smoothCents = null;
-  state.freqHistory.length = 0;
+  setSeg(el.dNote, '--', 'Sin nota'); el.sharpLed.classList.remove('on');
+  setSeg(el.dHz, '---.-'); setSeg(el.dCents, '---');
+  setLadder(null);
+  el.dirLow.classList.remove('now'); el.dirHigh.classList.remove('now'); el.dirOk.textContent = '';
+  stringLeds.forEach((l, i) => l.classList.toggle('on', i === state.lockedIdx));
+  lightKey(null);
+  state.smoothCents = null; state.freqHistory.length = 0;
 }
 
-// ====== Procesamiento de audio ======
+function updatePitchDisplay(freq){
+  const nearest = Math.round(freqToMidi(freq));
+  const strs = currentStrings();
+  let target = null;
+  if (strs.length){
+    if (state.lockedIdx != null) target = strs[state.lockedIdx];
+    else {
+      let best = Infinity;
+      strs.forEach(s => { const d = Math.abs(centsBetween(freq, s.freq)); if (d < best){ best = d; target = s; } });
+    }
+  }
+  const ref = target ? target.freq : midiToFreq(nearest);
+  const cents = centsBetween(freq, ref);
+  state.smoothCents = state.smoothCents == null ? cents : state.smoothCents * 0.6 + cents * 0.4;
+  const c = state.smoothCents, ac = Math.abs(c), inTune = ac < IN_TUNE_CENTS;
+
+  const name = midiToName(nearest);
+  const sharp = name.includes('#');
+  setSeg(el.dNote, name.replace('#', '').slice(0, 2).padEnd(2, ' '), name);
+  el.sharpLed.classList.toggle('on', sharp);
+  setSeg(el.dHz, freq >= 1000 ? String(Math.round(freq)) : freq.toFixed(1).padStart(5, ' '), freq.toFixed(1) + ' Hz');
+  const ci = Math.max(-99, Math.min(99, Math.round(c)));
+  setSeg(el.dCents, (ci < 0 ? '-' : ' ') + String(Math.abs(ci)).padStart(2, '0'), ci + ' cents');
+  setLadder(c);
+  el.dirLow.classList.toggle('now', !inTune && c < 0);
+  el.dirHigh.classList.toggle('now', !inTune && c > 0);
+  el.dirOk.textContent = inTune ? '✓ Afinada' : '';
+  el.dirOk.style.color = inTune ? 'var(--green)' : '';
+
+  stringLeds.forEach((l, i) => l.classList.toggle('on', target != null && i === target.idx));
+  lightKey(nearest);
+}
+
+// ====== Micrófono ======
 function processAudio(now){
   if (!state.running) return;
   state.raf = requestAnimationFrame(processAudio);
   if (now - state.lastAnalysis < ANALYSIS_INTERVAL_MS) return;
   state.lastAnalysis = now;
-
   state.analyser.getFloatTimeDomainData(state.buffer);
   const range = pitchRange();
-  const freq = detectPitch(state.buffer, state.audioCtx.sampleRate, range.min, range.max);
-
-  if (freq > 0 && freq >= range.min && freq <= range.max){
-    state.lastSignal = now;
-    updatePitchDisplay(smoothFreq(freq));
-  } else if (now - state.lastSignal > HOLD_MS){
-    clearReading();
-  }
+  const f = detectPitch(state.buffer, state.audioCtx.sampleRate, range.min, range.max);
+  const db = state.rms > 0 ? Math.max(-60, Math.round(20 * Math.log10(state.rms))) : -60;
+  el.micLevel.textContent = 'Señal ' + (db <= -60 ? '< −60' : db) + ' dB';
+  if (f > 0 && f >= range.min && f <= range.max){ state.lastSignal = now; updatePitchDisplay(smoothFreq(f)); }
+  else if (now - state.lastSignal > HOLD_MS) clearReading();
 }
-
-function updatePitchDisplay(freq){
-  const a4 = state.a4;
-  const nearestMidi = Math.round(freqToMidi(freq, a4));
-  const strs = currentStrings();
-
-  // Cuerda objetivo: la fijada a mano o la más cercana
-  let target = null;
-  if (strs.length){
-    if (state.lockedIdx != null) target = strs[state.lockedIdx];
-    else {
-      let bestDiff = Infinity;
-      strs.forEach(s => {
-        const diff = Math.abs(centsBetween(freq, s.freq));
-        if (diff < bestDiff){ bestDiff = diff; target = s; }
-      });
-    }
-  }
-
-  // Los cents se miden contra la cuerda objetivo (o la nota cromática más cercana)
-  const refFreq = target ? target.freq : midiToFreq(nearestMidi, a4);
-  const cents = centsBetween(freq, refFreq);
-  state.smoothCents = state.smoothCents == null ? cents : state.smoothCents * 0.6 + cents * 0.4;
-  const c = state.smoothCents;
-  const absC = Math.abs(c);
-  const inTune = absC < IN_TUNE_CENTS;
-
-  el.note.textContent = midiToName(nearestMidi);
-  el.note.classList.toggle('ok', inTune);
-  el.freq.textContent = freq.toFixed(1) + ' Hz';
-  el.cents.textContent = (c > 0 ? '+' : '') + c.toFixed(0) + ' cents' + (target ? ' respecto a ' + target.name : '');
-
-  // Aguja: -50 a +50 cents → -45° a +45°
-  const angle = (Math.max(-50, Math.min(50, c)) / 50) * 45;
-  el.needle.classList.remove('idle');
-  el.needle.style.transform = `rotate(${angle}deg)`;
-  const color = inTune ? 'var(--ok)' : absC < WARN_CENTS ? 'var(--warn)' : 'var(--bad)';
-  el.needle.style.background = color;
-
-  el.advice.style.color = color;
-  el.advice.textContent = inTune ? '✓ Afinada' : c < 0 ? '↑ Sube (aprieta la cuerda)' : '↓ Baja (afloja la cuerda)';
-
-  stringEls.forEach(s => s.classList.remove('active','in-tune'));
-  if (target){
-    el.target.textContent = (state.lockedIdx != null ? 'Objetivo fijado: ' : 'Objetivo: ') + `${target.name} (${target.freq.toFixed(1)} Hz)`;
-    const s = stringEls[target.idx];
-    if (s){ s.classList.add('active'); if (inTune) s.classList.add('in-tune'); }
-  } else {
-    el.target.textContent = 'Modo cromático';
-  }
-}
-
-// ====== Tono de referencia ======
-function playTone(freq){
-  try {
-    if (!state.toneCtx) state.toneCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = state.toneCtx;
-    if (ctx.state === 'suspended') ctx.resume();
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle'; osc.frequency.value = freq;
-    osc2.type = 'sine'; osc2.frequency.value = freq * 2;   // un armónico para que se oiga en altavoces pequeños
-    const g2 = ctx.createGain(); g2.gain.value = 0.3;
-    osc.connect(gain); osc2.connect(g2); g2.connect(gain); gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.25, t + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
-    osc.start(t); osc2.start(t); osc.stop(t + 1.9); osc2.stop(t + 1.9);
-  } catch(e){ console.error(e); }
-}
-
-// ====== Inicio/parada ======
 function micErrorMessage(err){
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
-    return 'Este navegador o esta página no permite usar el micrófono. Abre el afinador por HTTPS o desde localhost.';
+    return 'Este navegador o esta página no permite el micrófono. Ábrelo por HTTPS o desde localhost.';
   switch (err && err.name){
-    case 'NotAllowedError': case 'SecurityError':
-      return 'Permiso de micrófono denegado. Permítelo en el navegador, o abre el archivo en su propia pestaña (HTTPS).';
-    case 'NotFoundError': case 'OverconstrainedError':
-      return 'No se encontró ningún micrófono.';
-    case 'NotReadableError':
-      return 'El micrófono está en uso por otra aplicación.';
-    default:
-      return 'No se pudo acceder al micrófono: ' + (err && err.message || err);
+    case 'NotAllowedError': case 'SecurityError': return 'Permiso de micrófono denegado. Permítelo en el navegador.';
+    case 'NotFoundError': case 'OverconstrainedError': return 'No se encontró ningún micrófono.';
+    case 'NotReadableError': return 'El micrófono está en uso por otra aplicación.';
+    default: return 'No se pudo usar el micrófono: ' + (err && err.message || err);
   }
 }
-
-async function start(){
+function setMicUI(on, status, detail, isErr){
+  el.micLed.classList.toggle('on', on);
+  el.micBtn.classList.toggle('pressed', on);
+  el.micBtn.setAttribute('aria-pressed', on);
+  el.micStatus.textContent = status;
+  el.micLevel.textContent = detail;
+  el.micLevel.className = 'lbl dim' + (isErr ? ' err' : '');
+}
+async function startMic(){
   if (state.starting || state.running) return;
-  state.starting = true;
-  el.startBtn.disabled = true;
-  setStatus('Pidiendo permiso…');
+  state.starting = true; el.micBtn.disabled = true;
+  setMicUI(false, 'Pidiendo permiso…', '');
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('unsupported');
-    state.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }
-    });
+    state.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
     state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (state.audioCtx.state === 'suspended') await state.audioCtx.resume(); // iOS/Safari
+    if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
     state.source = state.audioCtx.createMediaStreamSource(state.stream);
     state.analyser = state.audioCtx.createAnalyser();
-    state.analyser.fftSize = 4096;
-    state.analyser.smoothingTimeConstant = 0;
+    state.analyser.fftSize = 4096; state.analyser.smoothingTimeConstant = 0;
     state.source.connect(state.analyser);
     state.buffer = new Float32Array(state.analyser.fftSize);
-
-    state.running = true;
-    state.lastAnalysis = 0;
-    el.startBtn.textContent = '⏹ Detener';
-    el.startBtn.classList.add('stop');
-    setStatus('Escuchando…', 'on');
+    state.running = true; state.lastAnalysis = 0;
+    setMicUI(true, 'Escuchando', 'Señal —');
     state.raf = requestAnimationFrame(processAudio);
   } catch(err){
-    console.error(err);
-    releaseAudio();
-    setStatus(micErrorMessage(err), 'err');
-  } finally {
-    state.starting = false;
-    el.startBtn.disabled = false;
-  }
+    console.error(err); releaseMic();
+    setMicUI(false, 'Apagado', micErrorMessage(err), true);
+  } finally { state.starting = false; el.micBtn.disabled = false; }
 }
-
-function releaseAudio(){
+function releaseMic(){
   if (state.raf) cancelAnimationFrame(state.raf);
   if (state.stream) state.stream.getTracks().forEach(t => t.stop());
   if (state.audioCtx && state.audioCtx.state !== 'closed') state.audioCtx.close();
-  state.raf = null; state.stream = null; state.audioCtx = null; state.analyser = null; state.source = null;
+  state.raf = state.stream = state.audioCtx = state.analyser = state.source = null;
 }
-
-function stop(){
-  state.running = false;
-  releaseAudio();
-  el.startBtn.textContent = '🎤 Activar micrófono';
-  el.startBtn.classList.remove('stop');
-  setStatus('Micrófono desactivado');
+function stopMic(){
+  state.running = false; releaseMic();
+  setMicUI(false, 'Apagado', 'Toca MIC para empezar');
   clearReading();
 }
 
-// ====== Eventos ======
-el.startBtn.addEventListener('click', () => { if (state.running) stop(); else start(); });
-
-el.instrumentSeg.addEventListener('click', (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  setInstrument(btn.dataset.inst);
-});
-function setInstrument(inst){
-  state.instrument = inst;
-  state.lockedIdx = null;
-  el.instrumentSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.inst === inst));
-  renderStrings(); clearReading(); savePrefs();
+// ====== Salida de audio (tonos y metrónomo) ======
+function outCtx(){
+  if (!state.outCtx) state.outCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (state.outCtx.state === 'suspended') state.outCtx.resume();
+  return state.outCtx;
+}
+function playTone(freq){
+  if (!state.tone) return;
+  try {
+    const ctx = outCtx(), t = ctx.currentTime;
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), g2 = ctx.createGain(), lp = ctx.createBiquadFilter();
+    o1.type = 'sawtooth'; o1.frequency.value = freq;
+    o2.type = 'square'; o2.frequency.value = freq; o2.detune.value = 6;   // dos osciladores levemente desafinados, como un sinte analógico
+    g2.gain.value = 0.5;
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(8000, freq * 8), t); lp.frequency.exponentialRampToValueAtTime(Math.max(200, freq * 2), t + 1.6); lp.Q.value = 2;
+    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+    o1.start(t); o2.start(t); o1.stop(t + 1.9); o2.stop(t + 1.9);
+  } catch(e){ console.error(e); }
 }
 
-el.stringsRow.addEventListener('click', (e) => {
-  const b = e.target.closest('.string');
-  if (!b) return;
-  const idx = Number(b.dataset.idx);
-  state.lockedIdx = state.lockedIdx === idx ? null : idx;
-  if (state.lockedIdx != null) playTone(currentStrings()[idx].freq);
-  renderStrings(); clearReading();
-});
-
-function changeTranspose(delta){
-  const v = state.transpose + delta;
-  if (v < -6 || v > 6) return;
-  state.transpose = v;
-  updateTransposeUI(); renderStrings(); clearReading(); savePrefs();
+// ====== Metrónomo ======
+function beatsPerBar(){ return SIGNATURES.find(s => s[0] === state.sig)[1]; }
+function renderBeats(){ el.beats.innerHTML = Array.from({length:beatsPerBar()}, () => '<div class="led"></div>').join(''); }
+function renderSig(){
+  el.sigBtns.innerHTML = SIGNATURES.map(([s]) => `<button class="key ${s === state.sig ? 'pressed' : ''}" data-sig="${s}" aria-pressed="${s === state.sig}">${s}</button>`).join('');
 }
-el.upBtn.addEventListener('click', () => changeTranspose(1));
-el.downBtn.addEventListener('click', () => changeTranspose(-1));
-
-function applyA4(){
-  const v = parseFloat(el.a4Input.value);
-  if (v >= 415 && v <= 466){
-    state.a4 = v;
-    el.a4Msg.textContent = 'A4 = ' + v + ' Hz';
-    el.a4Msg.classList.remove('err');
-    renderStrings(); clearReading(); savePrefs();
-  } else {
-    el.a4Msg.textContent = 'A4 debe estar entre 415 y 466 Hz';
-    el.a4Msg.classList.add('err');
+function renderBpm(){ setSeg(el.dBpm, String(state.bpm).padStart(3, ' '), state.bpm + ' BPM'); }
+function click(time, accent){
+  const ctx = outCtx();
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'square'; o.frequency.value = accent ? 1760 : 1100;
+  g.gain.setValueAtTime(0.0001, time); g.gain.exponentialRampToValueAtTime(accent ? 0.35 : 0.22, time + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+  o.connect(g); g.connect(ctx.destination); o.start(time); o.stop(time + 0.06);
+}
+function scheduler(){
+  const m = state.metro, ctx = outCtx();
+  // En 6/8 el tempo cuenta corcheas; en los demás, negras
+  while (m.nextTime < ctx.currentTime + 0.12){
+    const n = beatsPerBar();
+    if (m.beat >= n) m.beat = 0;
+    click(m.nextTime, m.beat === 0 || (n === 6 && m.beat === 3));
+    m.queue.push({ beat:m.beat, time:m.nextTime });
+    m.nextTime += 60 / state.bpm;
+    m.beat = (m.beat + 1) % n;
   }
 }
-el.a4Apply.addEventListener('click', applyA4);
-el.a4Input.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyA4(); });
+function drawBeats(){
+  const m = state.metro;
+  if (!m.running) return;
+  m.raf = requestAnimationFrame(drawBeats);
+  const now = outCtx().currentTime;
+  let cur = null;
+  while (m.queue.length && m.queue[0].time <= now){ cur = m.queue.shift(); }
+  if (cur){
+    const leds = el.beats.children;
+    [...leds].forEach((l, i) => l.className = 'led' + (i === cur.beat ? (cur.beat === 0 ? ' on green' : ' on') : ''));
+    clearTimeout(m.off); m.off = setTimeout(() => [...el.beats.children].forEach(l => l.className = 'led'), 110);
+  }
+}
+function startMetro(){
+  const m = state.metro, ctx = outCtx();
+  m.running = true; m.beat = 0; m.queue = []; m.nextTime = ctx.currentTime + 0.06;
+  scheduler(); m.timer = setInterval(scheduler, 25);
+  m.raf = requestAnimationFrame(drawBeats);
+  el.playBtn.textContent = '■ STOP'; el.playBtn.classList.add('pressed');
+}
+function stopMetro(){
+  const m = state.metro;
+  m.running = false; clearInterval(m.timer); cancelAnimationFrame(m.raf); m.queue = [];
+  [...el.beats.children].forEach(l => l.className = 'led');
+  el.playBtn.textContent = '▶ START'; el.playBtn.classList.remove('pressed');
+}
+function tap(){
+  const m = state.metro, now = performance.now();
+  m.taps = m.taps.filter(t => now - t < 2500);
+  m.taps.push(now);
+  if (m.taps.length >= 2){
+    const iv = [];
+    for (let i = 1; i < m.taps.length; i++) iv.push(m.taps[i] - m.taps[i - 1]);
+    const avg = iv.slice(-4).reduce((a, b) => a + b, 0) / Math.min(4, iv.length);
+    tempoKnob.set(60000 / avg);
+  }
+}
 
-// Liberar el micrófono si la pestaña se oculta (ahorra batería en móviles)
-document.addEventListener('visibilitychange', () => { if (document.hidden && state.running) stop(); });
+// ====== Eventos ======
+el.instBtns.addEventListener('click', e => {
+  const b = e.target.closest('[data-inst]'); if (!b) return;
+  state.instrument = b.dataset.inst; state.lockedIdx = null;
+  renderInstruments(); renderStrings(); clearReading(); savePrefs();
+});
+el.strings.addEventListener('click', e => {
+  const b = e.target.closest('[data-idx]'); if (!b) return;
+  const i = Number(b.dataset.idx);
+  state.lockedIdx = state.lockedIdx === i ? null : i;
+  if (state.lockedIdx != null) playTone(currentStrings()[i].freq);
+  updateModeLeds(); clearReading();
+});
+el.autoBtn.addEventListener('click', () => { state.lockedIdx = null; updateModeLeds(); clearReading(); });
+el.toneBtn.addEventListener('click', () => { state.tone = !state.tone; updateModeLeds(); savePrefs(); });
+el.kb.addEventListener('pointerdown', e => {
+  const k = e.target.closest('[data-midi]'); if (!k) return;
+  playTone(midiToFreq(Number(k.dataset.midi)));
+  k.classList.add('lit'); setTimeout(() => { if (k !== litKey) k.classList.remove('lit'); }, 250);
+});
+el.micBtn.addEventListener('click', () => state.running ? stopMic() : startMic());
+el.sigBtns.addEventListener('click', e => {
+  const b = e.target.closest('[data-sig]'); if (!b) return;
+  state.sig = b.dataset.sig; state.metro.beat = 0;
+  renderSig(); renderBeats(); savePrefs();
+});
+el.playBtn.addEventListener('click', () => state.metro.running ? stopMetro() : startMetro());
+el.tapBtn.addEventListener('click', tap);
+document.addEventListener('visibilitychange', () => { if (document.hidden && state.running) stopMic(); });
 
 // ====== Init ======
 loadPrefs();
-el.a4Input.value = state.a4;
-setInstrument(state.instrument);
-updateTransposeUI();
+const a4Knob = makeKnob('kA4', { min:415, max:466, value:state.a4, pxPerStep:4, ticks:11, reset:440, labels:[['415',-135],['466',135]],
+  onChange:v => { state.a4 = v; renderCalib(); renderStrings(); clearReading(); savePrefs(); } });
+const trKnob = makeKnob('kTr', { min:-6, max:6, value:state.transpose, pxPerStep:14, ticks:13, reset:0, labels:[['−6',-135],['+6',135]],
+  onChange:v => { state.transpose = v; state.lockedIdx = null; renderCalib(); renderStrings(); clearReading(); savePrefs(); } });
+const tempoKnob = makeKnob('kTempo', { min:40, max:240, value:state.bpm, pxPerStep:2, ticks:11, reset:120, labels:[['40',-135],['240',135]],
+  onChange:v => { state.bpm = v; renderBpm(); savePrefs(); } });
+renderInstruments(); renderCalib(); renderStrings(); renderSig(); renderBeats(); renderBpm(); clearReading();
 </script>
 </body>
 </html>
