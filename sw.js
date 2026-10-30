@@ -1,7 +1,7 @@
 // Service worker del afinador: guarda la app en el dispositivo para que abra sin conexión.
 // IMPORTANTE: subir VERSION cada vez que cambie cualquier archivo de ASSETS.
 // Así los celulares con la app instalada descargan la copia nueva y ven el aviso de actualizar.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'afinador-' + VERSION;
 const ASSETS = [
   './',
