@@ -378,7 +378,7 @@ const MAX_APER = 0.3, MAX_APER_TRACK = 0.6, TRACK_CENTS = 60;
 
 const state = {
   instrument:'guitar', transpose:0, a4:440, lockedIdx:null, tone:true,
-  running:false, starting:false, audioCtx:null, analyser:null, source:null, sink:null, stream:null, buffer:null, yin:null, raf:null,
+  running:false, starting:false, micPaused:false, soundUntil:0, soundTimer:null, audioCtx:null, analyser:null, source:null, sink:null, stream:null, buffer:null, yin:null, raf:null,
   lastAnalysis:0, lastSignal:0, lastFreq:0, noise:0.003, aper:1, freqHistory:[], smoothCents:null,
   outCtx:null,
   bpm:120, sig:'4/4', metro:{ running:false, beat:0, nextTime:0, timer:null, queue:[], raf:null, taps:[] },
@@ -802,6 +802,7 @@ async function startMic(){
     state.buffer = new Float32Array(state.analyser.fftSize);
     state.running = true; state.lastAnalysis = 0;
     onCtxState();
+    if (IS_IOS && soundActive()) holdMicForSound(0);
     state.raf = requestAnimationFrame(processAudio);
   } catch(err){
     console.error(err); releaseMic();
@@ -837,19 +838,99 @@ function outCtx(){
   if (ctx.state !== 'running') ctx.resume();
   return ctx;
 }
+// Cuerda pulsada (Karplus-Strong): una ráfaga de ruido recorre un lazo de retardo que la filtra
+// en cada vuelta. Así aparecen solos el ataque, los armónicos y la caída de una cuerda real.
+const PLUCK = {
+  //          duración (s), T60 en graves/agudos (s), brillo del ataque (0–1), punto de pulsación
+  guitar:  { dur:3.5, t60Low:6.0, t60High:3.0, bright:0.55, pos:0.18 },
+  bass:    { dur:4.0, t60Low:7.0, t60High:4.0, bright:0.35, pos:0.22 },
+  ukulele: { dur:2.5, t60Low:3.5, t60High:2.2, bright:0.65, pos:0.15 },
+  cuatro:  { dur:2.8, t60Low:4.0, t60High:2.5, bright:0.60, pos:0.16 },
+};
+const pluckCache = new Map();
+function pluckBuffer(ctx, freq, inst){
+  const P = PLUCK[inst] || PLUCK.guitar;
+  const key = inst + ':' + freq.toFixed(3) + ':' + ctx.sampleRate;
+  if (pluckCache.has(key)) return pluckCache.get(key);
+  const sr = ctx.sampleRate, len = Math.ceil(P.dur * sr);
+  const buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0);
+  // Retardo total del lazo = sr/freq. El promedio de dos muestras aporta 0,5 y un filtro pasa-todo
+  // aporta la fracción que falta, para que la nota quede exacta (importa en un afinador).
+  const period = sr / freq;
+  let N = Math.floor(period - 0.5), frac = period - 0.5 - N;
+  if (frac < 0.1){ N -= 1; frac += 1; }   // el pasa-todo es más estable con fracción entre 0,1 y 1,1
+  const ap = (1 - frac) / (1 + frac);
+  // Pérdida por vuelta según el T60 deseado (las notas agudas se apagan antes)
+  const t = Math.min(1, Math.max(0, Math.log2(freq / 80) / 4));
+  const t60 = P.t60Low + (P.t60High - P.t60Low) * t;
+  const loss = Math.pow(10, -3 / (t60 * freq));
+  // Excitación: ruido suavizado según el brillo y con el filtro de punto de pulsación
+  const line = new Float32Array(N);
+  let lp = 0;
+  for (let i = 0; i < N; i++){ lp += (1 - P.bright * 0.9 - 0.05) * ((Math.random() * 2 - 1) - lp); line[i] = lp; }
+  const pk = Math.max(1, Math.round(P.pos * N)), exc = line.slice();
+  for (let i = 0; i < N; i++) line[i] = exc[i] - (i >= pk ? exc[i - pk] : 0);
+  let mean = 0; for (let i = 0; i < N; i++) mean += line[i]; mean /= N;
+  for (let i = 0; i < N; i++) line[i] -= mean;   // sin componente continua
+  let idx = 0, prev = 0, apX = 0, apY = 0, peak = 0;
+  for (let n = 0; n < len; n++){
+    const x = line[idx];
+    const avg = loss * 0.5 * (x + prev); prev = x;
+    const y = ap * avg + apX - ap * apY; apX = avg; apY = y;   // pasa-todo de primer orden
+    line[idx] = y; out[n] = x;
+    if (Math.abs(x) > peak) peak = Math.abs(x);
+    if (++idx >= N) idx = 0;
+  }
+  const norm = peak > 0 ? 0.9 / peak : 1;
+  for (let n = 0; n < len; n++) out[n] *= norm;
+  for (let n = Math.max(0, len - 2000); n < len; n++) out[n] *= (len - n) / 2000;   // cola sin clic
+  pluckCache.set(key, buf);
+  return buf;
+}
 function playTone(freq){
   if (!state.tone) return;
   try {
-    const ctx = outCtx(), t = ctx.currentTime;
-    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), g2 = ctx.createGain(), lp = ctx.createBiquadFilter();
-    o1.type = 'sawtooth'; o1.frequency.value = freq;
-    o2.type = 'square'; o2.frequency.value = freq; o2.detune.value = 6;   // dos osciladores levemente desafinados, como un sinte analógico
-    g2.gain.value = 0.5;
-    lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(8000, freq * 8), t); lp.frequency.exponentialRampToValueAtTime(Math.max(200, freq * 2), t + 1.6); lp.Q.value = 2;
-    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(ctx.destination);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
-    o1.start(t); o2.start(t); o1.stop(t + 1.9); o2.stop(t + 1.9);
+    const ctx = outCtx();
+    const buf = pluckBuffer(ctx, freq, state.instrument);
+    const delay = holdMicForSound(buf.duration * 1000 + 150);
+    const t = ctx.currentTime + delay;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    // Caja de resonancia: realce suave en graves y medios, y menos chirrido arriba
+    const body = ctx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 110; body.Q.value = 1.2; body.gain.value = 4;
+    const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 230; mid.Q.value = 1.5; mid.gain.value = 3;
+    const top = ctx.createBiquadFilter(); top.type = 'lowpass'; top.frequency.value = 6000; top.Q.value = 0.5;
+    const g = ctx.createGain(); g.gain.value = 0.55;
+    src.connect(body); body.connect(mid); mid.connect(top); top.connect(g); g.connect(ctx.destination);
+    src.start(t);
   } catch(e){ console.error(e); }
+}
+
+// iPhone: con el micrófono abierto, el audio sale por el auricular de llamadas (casi no se oye)
+// y respeta el interruptor de silencio. Mientras suena una cuerda o el metrónomo se cierra el
+// micrófono para que el sonido salga por el parlante, y al terminar vuelve a escuchar solo.
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function soundActive(){ return state.metro.running || performance.now() < state.soundUntil; }
+// Devuelve cuántos segundos esperar antes de sonar (el cambio al parlante tarda un poco)
+function holdMicForSound(ms){
+  if (!IS_IOS) return 0;
+  if (ms) state.soundUntil = Math.max(state.soundUntil, performance.now() + ms);
+  clearTimeout(state.soundTimer);
+  if (!state.metro.running) state.soundTimer = setTimeout(resumeMicAfterSound, Math.max(0, state.soundUntil - performance.now()));
+  let delay = 0;
+  if (state.running){
+    state.running = false; state.micPaused = true;
+    releaseMic(); showTapCue(false); clearReading();
+    setMicUI(false, 'En pausa', 'Vuelve a escuchar cuando termine el sonido');
+    delay = 0.15;
+  }
+  setAudioSession('playback');
+  return delay;
+}
+function resumeMicAfterSound(){
+  if (!state.micPaused || soundActive()) return;
+  state.micPaused = false;
+  if (document.hidden){ state.resumeOnShow = true; return; }
+  startMic();
 }
 
 // ====== Metrónomo ======
@@ -893,7 +974,8 @@ function drawBeats(){
 }
 function startMetro(){
   const m = state.metro, ctx = outCtx();
-  m.running = true; m.beat = 0; m.queue = []; m.nextTime = ctx.currentTime + 0.06;
+  m.running = true; m.beat = 0; m.queue = [];
+  m.nextTime = ctx.currentTime + 0.06 + holdMicForSound(0);
   scheduler(); m.timer = setInterval(scheduler, 25);
   m.raf = requestAnimationFrame(drawBeats);
   el.playBtn.textContent = '■ STOP'; el.playBtn.classList.add('pressed');
@@ -903,6 +985,7 @@ function stopMetro(){
   m.running = false; clearInterval(m.timer); cancelAnimationFrame(m.raf); m.queue = [];
   [...el.beats.children].forEach(l => l.className = 'led');
   el.playBtn.textContent = '▶ START'; el.playBtn.classList.remove('pressed');
+  if (IS_IOS){ clearTimeout(state.soundTimer); state.soundTimer = setTimeout(resumeMicAfterSound, Math.max(150, state.soundUntil - performance.now())); }
 }
 function tap(){
   const m = state.metro, now = performance.now();
@@ -939,6 +1022,8 @@ el.kb.addEventListener('pointerdown', e => {
 el.micBtn.addEventListener('click', () => {
   // Si está esperando el toque para iniciar, el toque en MIC solo reanuda el audio
   if (state.running && state.outCtx.state !== 'running') return;
+  // En pausa por un sonido (iPhone): MIC lo deja apagado en vez de volver a escuchar
+  if (state.micPaused){ state.micPaused = false; clearTimeout(state.soundTimer); return stopMic(); }
   state.running ? stopMic() : startMic();
 });
 el.sigBtns.addEventListener('click', e => {
@@ -952,7 +1037,7 @@ el.tapBtn.addEventListener('click', tap);
 document.addEventListener('pointerdown', () => { if (state.outCtx && state.outCtx.state !== 'running' && state.outCtx.state !== 'closed') state.outCtx.resume(); });
 // Al cambiar de pestaña se apaga el micrófono y al volver se enciende de nuevo
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden){ if (state.running){ state.resumeOnShow = true; stopMic(); } }
+  if (document.hidden){ if (state.running){ state.resumeOnShow = true; stopMic(); } else if (state.micPaused){ state.micPaused = false; state.resumeOnShow = true; } }
   else if (state.resumeOnShow){ state.resumeOnShow = false; startMic(); }
 });
 
